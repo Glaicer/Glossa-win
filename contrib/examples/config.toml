@@ -1,0 +1,99 @@
+[input]
+# Selects the input backend that listens for recording commands; options: "portal" (alias: "hotkey"), "none".
+backend = "hotkey"
+# Global recording shortcut. Windows style (`Ctrl+Alt+Space`) and portal style (`<Ctrl><Alt>space`) are both accepted.
+shortcut = "Ctrl+Alt+Space"
+# Selects how the hotkey behaves; options: "toggle", "push-to-talk".
+mode = "push-to-talk"
+
+[control]
+# Enables the CLI control channel used by commands like `glossa ctl toggle`; options: true, false.
+enable_cli = true
+# Sets the IPC endpoint for daemon control; options: "auto" (127.0.0.1:47823) or a host:port address.
+socket_path = "auto"
+
+[provider]
+# Selects the speech-to-text provider mode; options: "groq", "openai", "openai-compatible".
+kind = "groq"
+# Sets the provider base URL; options: provider-specific HTTPS base URL, required for "openai-compatible".
+base_url = "https://api.groq.com/openai/v1"
+# Selects the transcription model; options depend on provider, for example Groq: "whisper-large-v3", "whisper-large-v3-turbo"; OpenAI: "whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe".
+model = "whisper-large-v3-turbo"
+# Sets the API key source or literal secret; options: "env:VARIABLE_NAME" or an explicit API key string.
+api_key = "env:GROQ_API_KEY"
+
+[LLM]
+# Enables LLM post-processing for transcribed text before pasting; options: true, false.
+enabled = false
+# Sets the OpenAI-compatible chat completions base URL used for text enhancement.
+base_url = ""
+# Sets the chat model alias used for text enhancement.
+model = ""
+# Sets the LLM API key source or literal secret; options: "env:VARIABLE_NAME", an explicit API key string, or "" for local providers.
+api_key = ""
+
+[audio]
+# Enables the recording start/stop cue sounds; options: true, false.
+enabled = true
+# Sets the working directory for temporary audio files; options: "auto" (%LOCALAPPDATA%\Temp\glossa) or an absolute directory path.
+work_dir = "auto"
+# Selects the recorded audio container format; options: "wav", "flac".
+format = "wav"
+# Sets the recording sample rate in Hz; options: positive integer values, typically 16000 for the MVP.
+sample_rate_hz = 16000
+# Sets the number of recording channels; options: positive integer values, typically 1 for mono.
+channels = 1
+# Enables trimming silence before transcription; options: true, false.
+trim_silence = true
+# Sets the absolute amplitude threshold for silence detection; options: 0–32767 (i16 range), higher values trim more aggressively (cut more noise). Default: 500.
+trim_threshold = 500
+# Sets the minimum accepted recording duration in milliseconds; options: positive integer values.
+min_duration_ms = 150
+# Sets the maximum recording duration in seconds; options: positive integer values.
+max_duration_sec = 120
+# Keeps captured audio files after each cycle for debugging; options: true, false.
+persist_audio = false
+# Selects idle microphone stream policy; options: "off", "balanced", "instant".
+latency_mode = "balanced"
+# Keeps the idle microphone stream active for this many seconds after recording stops in balanced mode; options: positive integer values.
+keepalive_after_stop_seconds = 60
+
+[paste]
+# Selects which keyboard shortcut to emulate for paste; options: "ctrl-v", "ctrl-shift-v", "shift-insert".
+mode = "ctrl-v"
+# Appends one trailing space to the pasted transcription for continuous dictation; options: true, false.
+append_space = false
+# Kept for config compatibility; Windows always uses the native clipboard backend.
+clipboard_command = "native"
+# Kept for config compatibility; Windows always uses native SendInput paste.
+type_command = "native"
+
+[ui]
+# Enables best-effort tray integration; options: true, false.
+tray = true
+# Selects which tray icon set to use; options: "light", "dark".
+theme = "dark"
+# Sets the tray icon shown while idle; options: absolute path to an icon file.
+idle_icon = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\tray\\idle.png"
+# Sets the tray icon shown while recording; options: absolute path to an icon file.
+recording_icon = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\tray\\recording.png"
+# Sets the tray icon shown while processing; options: absolute path to an icon file.
+processing_icon = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\tray\\processing.png"
+# Sets the dark-theme tray icon shown while idle; options: absolute path to an icon file.
+idle_dark_icon = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\tray\\idle_dark.png"
+# Sets the dark-theme tray icon shown while recording; options: absolute path to an icon file.
+recording_dark_icon = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\tray\\recording_dark.png"
+# Sets the dark-theme tray icon shown while processing; options: absolute path to an icon file.
+processing_dark_icon = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\tray\\processing_dark.png"
+# Sets the sound played when recording starts; options: absolute path to an audio file.
+start_sound = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\sounds\\start.wav"
+# Sets the sound played when recording stops; options: absolute path to an audio file.
+stop_sound = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\sounds\\stop.wav"
+
+[logging]
+# Sets the minimum log verbosity; options typically include "trace", "debug", "info", "warn", "error".
+level = "info"
+# Enables console/stderr logging; options: true, false.
+journal = true
+# Enables logging to a file sink when implemented; options: true, false.
+file = false

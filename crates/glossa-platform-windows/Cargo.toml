@@ -1,0 +1,41 @@
+[package]
+name = "glossa-platform-windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arboard.workspace = true
+async-trait.workspace = true
+camino.workspace = true
+enigo.workspace = true
+global-hotkey.workspace = true
+png.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tray-icon.workspace = true
+glossa-app = { path = "../glossa-app" }
+glossa-core = { path = "../glossa-core" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59.0", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+] }
+
+# Win32 FFI (MessageBox, GetAsyncKeyState) requires a narrow unsafe allowance.
+[lints.rust]
+unsafe_code = "allow"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+unnecessary_wraps = "warn"
