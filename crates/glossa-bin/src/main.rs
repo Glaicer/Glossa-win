@@ -12,12 +12,14 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Daemon => cmd::daemon::run(cli.config).await,
-        Command::Service { service } => cmd::service::run(service).await,
-        Command::Ctl { ctl } => cmd::ctl::run(cli.config, ctl).await,
-        Command::Doctor => cmd::doctor::run(cli.config).await,
-        Command::Status => cmd::status::run(cli.config).await,
-        Command::Update => cmd::update::run().await,
+        None => cmd::daemon::run_auto(cli.config).await,
+        Some(Command::Daemon) => cmd::daemon::run(cli.config).await,
+        Some(Command::Setup) => cmd::setup::run().await,
+        Some(Command::Service { service }) => cmd::service::run(service).await,
+        Some(Command::Ctl { ctl }) => cmd::ctl::run(cli.config, ctl).await,
+        Some(Command::Doctor) => cmd::doctor::run(cli.config).await,
+        Some(Command::Status) => cmd::status::run(cli.config).await,
+        Some(Command::Update) => cmd::update::run().await,
     }
     .context("command failed")
 }

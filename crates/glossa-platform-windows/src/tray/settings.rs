@@ -9,6 +9,7 @@ use glossa_core::{
 pub(super) struct SettingsValues {
     pub(super) input_backend: InputBackend,
     pub(super) input_mode: InputMode,
+    pub(super) shortcut: String,
     pub(super) enable_cli: bool,
     pub(super) provider_kind: ProviderKind,
     pub(super) provider_base_url: String,
@@ -30,6 +31,7 @@ impl SettingsValues {
         Self {
             input_backend: config.input.backend,
             input_mode: config.input.mode,
+            shortcut: config.input.shortcut.clone(),
             enable_cli: config.control.enable_cli,
             provider_kind: config.provider.kind,
             provider_base_url: config.provider.base_url.clone().unwrap_or_default(),
@@ -281,6 +283,7 @@ fn build_updates(settings: &SettingsValues) -> Vec<SettingUpdate> {
             quoted(input_backend_id(settings.input_backend)),
         ),
         SettingUpdate::new("input", "mode", quoted(input_mode_id(settings.input_mode))),
+        SettingUpdate::new("input", "shortcut", quoted(&settings.shortcut)),
         SettingUpdate::new("control", "enable_cli", settings.enable_cli.to_string()),
         SettingUpdate::new(
             "provider",
@@ -500,6 +503,7 @@ api_key = ""
         SettingsValues {
             input_backend: InputBackend::None,
             input_mode: InputMode::Toggle,
+            shortcut: "Ctrl+Shift+Space".into(),
             enable_cli: false,
             provider_kind: ProviderKind::OpenAiCompatible,
             provider_base_url: "https://example.com/v1".into(),
@@ -526,7 +530,7 @@ api_key = ""
 # Backend comment
 backend = "none"
 mode = "toggle"
-shortcut = "<Ctrl><Alt>space"
+shortcut = "Ctrl+Shift+Space"
 
 [control]
 enable_cli = false # keep this comment
@@ -607,7 +611,7 @@ api_key = "env:LLM_KEY"
 # Backend comment
 backend = "none"
 mode = "toggle"
-shortcut = "<Ctrl><Alt>space"
+shortcut = "Ctrl+Shift+Space"
 
 [control]
 enable_cli = false # keep this comment
@@ -679,7 +683,7 @@ api_key = "env:LLM_KEY"
 # Backend comment
 backend = "none"
 mode = "toggle"
-shortcut = "<Ctrl><Alt>space"
+shortcut = "Ctrl+Shift+Space"
 
 [control]
 enable_cli = false # keep this comment

@@ -1096,6 +1096,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "toml",
  "tracing",
  "tray-icon",
  "windows-sys 0.59.0",

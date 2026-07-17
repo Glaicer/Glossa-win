@@ -14,14 +14,18 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub config: Option<PathBuf>,
 
+    /// Subcommand to run. When omitted, Glossa runs setup (first run) or the daemon.
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 /// Top-level commands supported by the binary.
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Run the speech-to-text daemon (starts the first-run wizard when no config exists).
     Daemon,
+    /// Interactive first-run installer: API key, hotkey, assets, optional autostart.
+    Setup,
     Service {
         #[command(subcommand)]
         service: ServiceCommand,
@@ -81,11 +85,23 @@ mod tests {
     }
 
     #[test]
+    fn bare_invocation_should_parse_with_no_subcommand() {
+        let cli = Cli::try_parse_from(["glossa"]).expect("bare glossa should parse");
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn setup_subcommand_should_parse() {
+        let cli = Cli::try_parse_from(["glossa", "setup"]).expect("setup should parse");
+        assert!(matches!(cli.command, Some(super::Command::Setup)));
+    }
+
+    #[test]
     fn update_subcommand_should_parse() {
         let cli =
             Cli::try_parse_from(["glossa", "update"]).expect("update subcommand should parse");
 
-        assert!(matches!(cli.command, super::Command::Update));
+        assert!(matches!(cli.command, Some(super::Command::Update)));
     }
 
     #[test]
@@ -95,9 +111,9 @@ mod tests {
 
         assert!(matches!(
             cli.command,
-            super::Command::Service {
+            Some(super::Command::Service {
                 service: ServiceCommand::Start
-            }
+            })
         ));
     }
 
@@ -108,9 +124,9 @@ mod tests {
 
         assert!(matches!(
             cli.command,
-            super::Command::Ctl {
+            Some(super::Command::Ctl {
                 ctl: super::CtlCommand::Stream
-            }
+            })
         ));
     }
 

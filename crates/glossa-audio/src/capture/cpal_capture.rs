@@ -82,9 +82,13 @@ impl AudioCapture for CpalAudioCapture {
             buffer_size: cpal::BufferSize::Default,
         };
 
-        let writer_started_at = Instant::now();
-        let (writer_tx, writer_handle, writer_config) = start_writer(path, &requested_config);
-        let writer_setup_ms = writer_started_at.elapsed().as_millis();
+        let device_name = device
+            .name()
+            .unwrap_or_else(|_| "unknown input device".to_owned());
+        // Build the stream before opening the WAV writer so the on-disk header matches
+        // the format CPAL actually delivers (common on Windows: 44100 Hz stereo fallback
+        // when 16000 Hz mono is unsupported). Samples only flow after `stream.play()`.
+        let (writer_tx, writer_rx) = mpsc::sync_channel::<Vec<i16>>(8);
         let (first_input_tx, first_input_rx) = mpsc::sync_channel(1);
         let first_input_notifier = FirstInputBufferNotifier::new(first_input_tx);
         let stream_build_started_at = Instant::now();
@@ -99,6 +103,7 @@ impl AudioCapture for CpalAudioCapture {
             Err(error) => {
                 tracing::info!(
                     %session_id,
+                    device = %device_name,
                     requested_sample_rate_hz = requested_config.sample_rate.0,
                     requested_channels = requested_config.channels,
                     fallback_sample_rate_hz = fallback_config.sample_rate.0,
@@ -120,6 +125,11 @@ impl AudioCapture for CpalAudioCapture {
             }
         };
         let stream_build_ms = stream_build_started_at.elapsed().as_millis();
+
+        let writer_started_at = Instant::now();
+        let (writer_handle, writer_config) = start_writer(path, &stream_config, writer_rx);
+        let writer_setup_ms = writer_started_at.elapsed().as_millis();
+
         let play_started_at = Instant::now();
         stream
             .play()
@@ -151,6 +161,7 @@ impl AudioCapture for CpalAudioCapture {
         };
         tracing::info!(
             %session_id,
+            device = %device_name,
             requested_sample_rate_hz = spec.sample_rate_hz,
             requested_channels = spec.channels,
             writer_sample_rate_hz = writer_config.sample_rate.0,
@@ -202,7 +213,8 @@ impl AudioCapture for CpalAudioCapture {
 fn start_writer(
     path: &Utf8Path,
     config: &StreamConfig,
-) -> (SyncSender<Vec<i16>>, WriterHandle, StreamConfig) {
+    rx: mpsc::Receiver<Vec<i16>>,
+) -> (WriterHandle, StreamConfig) {
     let wav_path = path.to_path_buf().into_std_path_buf();
     let wav_spec = hound::WavSpec {
         channels: config.channels,
@@ -210,7 +222,6 @@ fn start_writer(
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
-    let (tx, rx) = mpsc::sync_channel::<Vec<i16>>(8);
     let handle = thread::spawn(move || -> Result<(), String> {
         let mut writer = hound::WavWriter::create(wav_path, wav_spec)
             .map_err(|error| format!("failed to create wav writer: {error}"))?;
@@ -226,7 +237,7 @@ fn start_writer(
             .map_err(|error| format!("failed to finalize wav writer: {error}"))?;
         Ok(())
     });
-    (tx, handle, config.clone())
+    (handle, config.clone())
 }
 
 fn build_preferred_stream(
@@ -800,6 +811,43 @@ mod tests {
         assert_eq!(candidates[0].buffer_size, cpal::BufferSize::Fixed(512));
         assert_eq!(candidates[1].buffer_size, cpal::BufferSize::Fixed(1024));
         assert_eq!(candidates[2].buffer_size, cpal::BufferSize::Default);
+    }
+
+    #[test]
+    fn writer_header_should_match_actual_stream_config_on_fallback_rates() {
+        // Regression: when CPAL falls back to 44100 Hz stereo, the WAV must not be
+        // labeled as the requested 16000 Hz mono (that made STT hear garbage).
+        let path_buf = std::env::temp_dir().join(format!(
+            "glossa-fallback-writer-{}.wav",
+            std::process::id()
+        ));
+        let path = Utf8Path::from_path(&path_buf).expect("utf8 path");
+        let stream_config = StreamConfig {
+            channels: 2,
+            sample_rate: SampleRate(44_100),
+            buffer_size: cpal::BufferSize::Default,
+        };
+        let (tx, rx) = mpsc::sync_channel(2);
+        let (handle, writer_config) = start_writer(path, &stream_config, rx);
+
+        assert_eq!(writer_config.sample_rate.0, 44_100);
+        assert_eq!(writer_config.channels, 2);
+
+        // One stereo frame at half scale.
+        tx.send(vec![16_000_i16, -16_000_i16]).expect("send");
+        drop(tx);
+        handle.join().expect("join").expect("writer ok");
+
+        let reader = hound::WavReader::open(path.as_std_path()).expect("open wav");
+        let spec = reader.spec();
+        assert_eq!(spec.sample_rate, 44_100);
+        assert_eq!(spec.channels, 2);
+        let samples: Vec<i16> = reader
+            .into_samples::<i16>()
+            .map(|s| s.expect("sample"))
+            .collect();
+        assert_eq!(samples, vec![16_000, -16_000]);
+        let _ = std::fs::remove_file(&path_buf);
     }
 
     #[test]

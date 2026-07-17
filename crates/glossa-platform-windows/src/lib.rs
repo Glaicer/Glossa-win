@@ -7,6 +7,8 @@ pub mod hotkey;
 pub mod ipc;
 pub mod paste;
 pub mod service;
+pub mod setup;
 pub mod temp;
 pub mod tray;
 pub mod updater;
+mod winmsg;

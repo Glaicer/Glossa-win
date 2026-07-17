@@ -8,6 +8,8 @@ use tracing::{info, warn};
 use glossa_app::{ports::CommandSource, AppError};
 use glossa_core::{AppCommand, InputConfig, InputMode};
 
+use crate::winmsg::pump_thread_messages;
+
 use super::mapping::{map_hotkey_signal_to_command, HotkeySignal};
 use super::shortcut_parser::parse_shortcut;
 
@@ -51,7 +53,11 @@ impl CommandSource for GlobalHotkeySource {
 
             let receiver = GlobalHotKeyEvent::receiver();
             loop {
-                match receiver.recv_timeout(Duration::from_millis(200)) {
+                // global-hotkey delivers events via the Win32 message queue on
+                // this thread; pump it so RegisterHotKey notifications arrive.
+                pump_thread_messages();
+
+                match receiver.recv_timeout(Duration::from_millis(50)) {
                     Ok(event) if event.id == hotkey.id() => {
                         let signal = match event.state {
                             HotKeyState::Pressed => HotkeySignal::Activated,

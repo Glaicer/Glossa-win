@@ -14,6 +14,7 @@ png.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+toml.workspace = true
 tracing.workspace = true
 tray-icon.workspace = true
 glossa-app = { path = "../glossa-app" }
@@ -22,8 +23,11 @@ glossa-core = { path = "../glossa-core" }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59.0", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Controls",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_LibraryLoader",
     "Win32_System_Registry",
     "Win32_System_Threading",
 ] }

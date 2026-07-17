@@ -88,3 +88,19 @@ Cross-compiling from Linux requires a Windows target and linker (`x86_64-pc-wind
 - `paste.clipboard_command` / `paste.type_command` are kept for schema compatibility; the Windows build always uses native adapters
 - Default config path: `%APPDATA%\glossa\config.toml`
 - Default asset path: `%LOCALAPPDATA%\glossa\assets\...`
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default role strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.

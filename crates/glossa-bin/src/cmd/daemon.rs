@@ -8,19 +8,58 @@ use glossa_platform_windows::{
     dialog::show_fatal_error_dialog,
     hotkey::{run_escape_cancel_monitor, GlobalHotkeySource},
     ipc::IpcServer,
+    setup::{run_setup_wizard, ConfigPathStatus, WizardOutcome},
 };
 
 use crate::bootstrap::{build_actor, build_tray, init_tracing, load_config};
 
 const FATAL_ERROR_TITLE: &str = "Glossa fatal error";
 
+/// Runs with no subcommand: first-run wizard when needed, otherwise the daemon.
+pub async fn run_auto(config_path: Option<std::path::PathBuf>) -> anyhow::Result<()> {
+    handle_fatal_daemon_result(run_auto_inner(config_path).await, report_fatal_error).await
+}
+
 pub async fn run(config_path: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     handle_fatal_daemon_result(run_inner(config_path).await, report_fatal_error).await
 }
 
+async fn run_auto_inner(config_path: Option<std::path::PathBuf>) -> anyhow::Result<()> {
+    let status = ConfigPathStatus::resolve(config_path).context("failed to resolve config path")?;
+    let config_path = match status {
+        ConfigPathStatus::Ready(path) => path,
+        ConfigPathStatus::NeedsSetup(_) => {
+            info!("no config found; launching first-run setup wizard");
+            match ensure_setup().await? {
+                EnsureSetup::ConfigReady(path) => path,
+                EnsureSetup::DaemonStarted | EnsureSetup::Cancelled => return Ok(()),
+            }
+        }
+    };
+    run_with_config(config_path).await
+}
+
 async fn run_inner(config_path: Option<std::path::PathBuf>) -> anyhow::Result<()> {
-    let config_path =
-        config_path.ok_or_else(|| anyhow!("`glossa daemon` requires --config <path>"))?;
+    let status = ConfigPathStatus::resolve(config_path).context("failed to resolve config path")?;
+    let config_path = match status {
+        ConfigPathStatus::Ready(path) => path,
+        ConfigPathStatus::NeedsSetup(path) => {
+            info!(path = %path.display(), "config missing; launching first-run setup wizard");
+            match ensure_setup().await? {
+                EnsureSetup::ConfigReady(path) => path,
+                EnsureSetup::DaemonStarted => return Ok(()),
+                EnsureSetup::Cancelled => {
+                    return Err(anyhow!(
+                        "setup was cancelled; re-run `glossa setup` or pass --config"
+                    ));
+                }
+            }
+        }
+    };
+    run_with_config(config_path).await
+}
+
+async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> {
     let mut config = load_config(&config_path).await?;
     init_tracing(&config)?;
     info!(path = %config_path.display(), "starting glossa daemon");
@@ -114,6 +153,32 @@ fn format_fatal_error_message(error: &anyhow::Error) -> String {
 
 fn report_fatal_error(title: &str, message: &str) -> Result<(), String> {
     show_fatal_error_dialog(title, message).map_err(|error| error.to_string())
+}
+
+enum EnsureSetup {
+    ConfigReady(std::path::PathBuf),
+    DaemonStarted,
+    Cancelled,
+}
+
+/// Runs the setup wizard and reports how the caller should continue.
+async fn ensure_setup() -> anyhow::Result<EnsureSetup> {
+    let outcome = tokio::task::spawn_blocking(run_setup_wizard)
+        .await
+        .context("setup wizard task failed")?
+        .context("setup wizard failed")?;
+
+    match outcome {
+        WizardOutcome::Completed(result) if result.start_now => {
+            info!(
+                path = %result.config_path.display(),
+                "setup finished and daemon already started"
+            );
+            Ok(EnsureSetup::DaemonStarted)
+        }
+        WizardOutcome::Completed(result) => Ok(EnsureSetup::ConfigReady(result.config_path)),
+        WizardOutcome::Cancelled => Ok(EnsureSetup::Cancelled),
+    }
 }
 
 #[cfg(test)]
