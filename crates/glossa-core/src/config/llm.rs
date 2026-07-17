@@ -143,8 +143,6 @@ trim_threshold = 500
 min_duration_ms = 150
 max_duration_sec = 120
 persist_audio = false
-latency_mode = "balanced"
-keepalive_after_stop_seconds = 60
 
 [paste]
 mode = "ctrl-v"
@@ -202,8 +200,6 @@ trim_threshold = 500
 min_duration_ms = 150
 max_duration_sec = 120
 persist_audio = false
-latency_mode = "balanced"
-keepalive_after_stop_seconds = 60
 
 [paste]
 mode = "ctrl-v"

@@ -26,7 +26,6 @@ I personally recommend using [Groq](https://groq.com/) as it offers the followin
 - Optional OpenAI-compatible LLM enhancer to fix punctuation and obvious transcription mistakes
 - Configurable via `%APPDATA%\glossa\config.toml`
 - Autostart via Startup folder (`glossa service start`)
-- Microphone keepalive controls for lower recording startup latency
 - Pastes using standard clipboard shortcuts such as `Ctrl+V`, `Ctrl+Shift+V`, or `Shift+Insert`
 - Restores the previous clipboard contents after pasting
 - Esc cancels an in-progress recording
@@ -94,7 +93,6 @@ Set your API key in the user environment, or put a literal key in `config.toml`:
 | `glossa daemon` | Run the daemon in the foreground (`--config` required) |
 | `glossa service start\|stop\|restart` | Manage Startup-folder autostart |
 | `glossa ctl toggle` | Toggle recording over IPC |
-| `glossa ctl stream` | Toggle the warm microphone stream |
 | `glossa ctl shutdown` | Ask the daemon to shut down |
 | `glossa status` | Print the current daemon status |
 | `glossa doctor` | Run environment and configuration diagnostics |
@@ -105,7 +103,6 @@ Set your API key in the user environment, or put a literal key in `config.toml`:
 Most day-to-day toggles are available from the tray menu:
 
 - Toggle recording
-- Mic stream
 - AI enhancer
 - Append space
 - Mode: Toggle / Push-to-talk

@@ -27,7 +27,6 @@ pub enum InternalEvent {
         session_id: SessionId,
         outcome: CycleOutcome,
     },
-    IdleStreamStatusRefresh,
 }
 
 /// Final outcome of a capture/transcription/paste cycle.

@@ -43,7 +43,6 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 pub enum CtlCommand {
     Toggle,
-    Stream,
     Shutdown,
 }
 
@@ -118,14 +117,14 @@ mod tests {
     }
 
     #[test]
-    fn ctl_stream_subcommand_should_parse() {
+    fn ctl_toggle_subcommand_should_parse() {
         let cli =
-            Cli::try_parse_from(["glossa", "ctl", "stream"]).expect("ctl stream should parse");
+            Cli::try_parse_from(["glossa", "ctl", "toggle"]).expect("ctl toggle should parse");
 
         assert!(matches!(
             cli.command,
             Some(super::Command::Ctl {
-                ctl: super::CtlCommand::Stream
+                ctl: super::CtlCommand::Toggle
             })
         ));
     }

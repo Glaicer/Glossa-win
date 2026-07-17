@@ -13,8 +13,8 @@ pub mod status;
 pub use audio::{AudioFormat, CapturedAudio, RecordSpec};
 pub use command::{AppCommand, CommandOrigin};
 pub use config::{
-    AppConfig, AudioConfig, ControlConfig, InputBackend, InputConfig, InputMode, LatencyMode,
-    LlmConfig, LogLevel, LoggingConfig, PasteConfig, SecretSource, UiConfig, UiTheme, WorkDir,
+    AppConfig, AudioConfig, ControlConfig, InputBackend, InputConfig, InputMode, LlmConfig,
+    LogLevel, LoggingConfig, PasteConfig, SecretSource, UiConfig, UiTheme, WorkDir,
     DEFAULT_IPC_ENDPOINT,
 };
 pub use error::CoreError;

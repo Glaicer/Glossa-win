@@ -28,7 +28,6 @@ pub async fn run(
 fn ipc_request_for_ctl_command(command: CtlCommand) -> IpcRequest {
     match command {
         CtlCommand::Toggle => IpcRequest::Toggle,
-        CtlCommand::Stream => IpcRequest::Stream,
         CtlCommand::Shutdown => IpcRequest::Shutdown,
     }
 }
@@ -40,10 +39,18 @@ mod tests {
     use glossa_platform_windows::ipc::IpcRequest;
 
     #[test]
-    fn ctl_stream_should_send_stream_ipc_request() {
+    fn ctl_toggle_should_send_toggle_ipc_request() {
         assert_eq!(
-            ipc_request_for_ctl_command(CtlCommand::Stream),
-            IpcRequest::Stream
+            ipc_request_for_ctl_command(CtlCommand::Toggle),
+            IpcRequest::Toggle
+        );
+    }
+
+    #[test]
+    fn ctl_shutdown_should_send_shutdown_ipc_request() {
+        assert_eq!(
+            ipc_request_for_ctl_command(CtlCommand::Shutdown),
+            IpcRequest::Shutdown
         );
     }
 }

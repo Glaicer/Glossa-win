@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial Windows port of Glossa, feature-aligned with Linux 1.4.0.
 - Native Windows clipboard (`arboard`) and paste (`enigo` / SendInput).
 - Global hotkey backend via `global-hotkey` (toggle and push-to-talk).
-- System tray with status icons and quick toggles (mic stream, AI enhancer, append space, mode).
+- System tray with status icons and quick toggles (AI enhancer, append space, mode).
 - Loopback TCP IPC for `glossa ctl` / `glossa status` (`127.0.0.1:47823` by default).
 - Esc-to-cancel while recording.
 - Autostart via Startup folder (`glossa service start|stop|restart`).

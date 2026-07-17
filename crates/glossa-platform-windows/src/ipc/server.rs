@@ -71,12 +71,6 @@ async fn handle_client(stream: TcpStream, handle: AppHandle) -> Result<(), AppEr
             })?;
             IpcResponse::Ok
         }
-        IpcRequest::Stream => {
-            handle.send(AppCommand::ToggleInputStream {
-                origin: CommandOrigin::CliControl,
-            })?;
-            IpcResponse::Ok
-        }
         IpcRequest::Status => IpcResponse::Status {
             status: handle.status(),
         },

@@ -170,11 +170,6 @@ impl TrayPort for BestEffortTrayPort {
         Ok(())
     }
 
-    async fn set_mic_stream_state(&self, active: bool) -> Result<(), AppError> {
-        self.send_command(TrayCommand::SetMicStream(active));
-        Ok(())
-    }
-
     async fn show_error(&self, message: &str) -> Result<(), AppError> {
         self.send_command(TrayCommand::ShowError(message.to_owned()));
         Ok(())
@@ -185,7 +180,6 @@ impl TrayPort for BestEffortTrayPort {
 enum TrayCommand {
     SetState(TrayState),
     SetShortcut(String),
-    SetMicStream(bool),
     ShowError(String),
 }
 
@@ -201,7 +195,6 @@ struct TrayRuntime {
     change_shortcut_item: MenuItem,
     settings_item: MenuItem,
     update_item: MenuItem,
-    mic_stream_item: CheckMenuItem,
     enhancer_item: CheckMenuItem,
     version_item: MenuItem,
     exit_item: MenuItem,
@@ -258,12 +251,6 @@ fn run_tray_thread(
     let change_shortcut_item = MenuItem::new("Change shortcut…", true, None);
     let settings_item = MenuItem::new("Settings", true, None);
     let update_item = MenuItem::new("Update…", true, None);
-    let mic_stream_item = CheckMenuItem::new(
-        "Mic stream",
-        true,
-        settings.latency_mode != glossa_core::LatencyMode::Off,
-        None,
-    );
     let enhancer_item = CheckMenuItem::new("AI enhancer", true, settings.llm_enabled, None);
     let version_item = MenuItem::new(format!("Version {APP_VERSION}"), false, None);
     let exit_item = MenuItem::new("Exit", true, None);
@@ -274,7 +261,6 @@ fn run_tray_thread(
         &settings_item,
         &update_item,
         &PredefinedMenuItem::separator(),
-        &mic_stream_item,
         &enhancer_item,
         &PredefinedMenuItem::separator(),
         &version_item,
@@ -341,7 +327,6 @@ fn run_tray_thread(
         change_shortcut_item,
         settings_item,
         update_item,
-        mic_stream_item,
         enhancer_item,
         version_item,
         exit_item,
@@ -427,9 +412,6 @@ impl TrayRuntime {
                     self.settings.shortcut = description;
                 }
             }
-            TrayCommand::SetMicStream(active) => {
-                self.mic_stream_item.set_checked(active);
-            }
             TrayCommand::ShowError(message) => {
                 let _ = show_message_dialog("Glossa", &message);
             }
@@ -447,12 +429,6 @@ impl TrayRuntime {
         }
         if id == self.update_item.id() {
             self.handle_update();
-            return false;
-        }
-        if id == self.mic_stream_item.id() {
-            self.send_app_command(AppCommand::ToggleInputStream {
-                origin: CommandOrigin::TrayMenu,
-            });
             return false;
         }
         if id == self.enhancer_item.id() {
