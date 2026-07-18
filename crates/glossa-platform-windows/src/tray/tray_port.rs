@@ -24,8 +24,8 @@ use glossa_app::{
 };
 use glossa_core::{AppCommand, AppConfig, CommandOrigin, InputMode, UiConfig};
 
-use crate::dialog::{prompt_text_dialog, show_info_dialog, show_message_dialog};
-use crate::hotkey::parse_shortcut;
+use crate::dialog::{show_info_dialog, show_message_dialog};
+use crate::hotkey::{format_shortcut_display, parse_shortcut, prompt_hotkey_dialog};
 use crate::service::restart_glossa_service;
 use crate::updater::{check_for_update, install_update, UpdaterStatus};
 use crate::winmsg::pump_thread_messages;
@@ -426,11 +426,7 @@ impl TrayRuntime {
 
     fn handle_change_shortcut(&mut self) {
         let current = self.settings.shortcut.clone();
-        let entered = match prompt_text_dialog(
-            "Change shortcut",
-            "Enter a new global hotkey (e.g. Ctrl+Alt+Space):",
-            &current,
-        ) {
+        let entered = match prompt_hotkey_dialog("Change shortcut", &current) {
             Ok(value) => value,
             Err(error) => {
                 let _ = show_message_dialog("Glossa", &format!("Failed to open prompt:\n{error}"));
@@ -455,17 +451,15 @@ impl TrayRuntime {
         self.settings.shortcut = trimmed;
         self.persist_settings();
         self.request_restart();
+        let display = format_shortcut_display(&self.settings.shortcut);
         let _ = show_info_dialog(
             "Glossa",
-            &format!(
-                "Shortcut updated to {}.\nGlossa is restarting to apply it.",
-                self.settings.shortcut
-            ),
+            &format!("Shortcut updated to {display}.\nGlossa is restarting to apply it."),
         );
     }
 
-    fn persist_settings(&self) {
-        if let Err(error) = write_settings_to_config(&self.config_path, &self.settings) {
+    fn persist_settings(&mut self) {
+        if let Err(error) = write_settings_to_config(&self.config_path, &mut self.settings) {
             warn!(error = %error, "failed to write settings to config.toml");
             let _ = show_message_dialog(
                 "Glossa",

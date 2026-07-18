@@ -57,8 +57,8 @@ mod ui {
         },
         UI::{
             Controls::{
-                InitCommonControlsEx, BST_CHECKED, ICC_STANDARD_CLASSES, ICC_WIN95_CLASSES,
-                INITCOMMONCONTROLSEX,
+                InitCommonControlsEx, BST_CHECKED, EM_SETCUEBANNER, ICC_STANDARD_CLASSES,
+                ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX,
             },
             Input::KeyboardAndMouse::{EnableWindow, SetFocus},
             WindowsAndMessaging::{
@@ -78,6 +78,7 @@ mod ui {
         },
     };
 
+    use super::super::settings::keep_or_replace_llm_api_key;
     use super::SettingsValues;
 
     const CLASS_NAME: &str = "GlossaSettingsDialog";
@@ -86,8 +87,8 @@ mod ui {
     const WIN_WIDTH: i32 = 480;
     /// Initial outer height placeholder; resized to content after layout.
     const WIN_HEIGHT: i32 = 720;
-    const LLM_WIN_WIDTH: i32 = 440;
-    const LLM_WIN_HEIGHT: i32 = 320;
+    const LLM_WIN_WIDTH: i32 = 460;
+    const LLM_WIN_HEIGHT: i32 = 380;
     const WINDOW_STYLE: u32 = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
     const WINDOW_EX_STYLE: u32 = WS_EX_CONTROLPARENT;
 
@@ -169,6 +170,8 @@ mod ui {
         base_url: HWND,
         model: HWND,
         api_key: HWND,
+        /// Config-side value when the dialog opened (kept if the field is left blank).
+        previous_api_key: String,
         result: Option<LlmDraft>,
         cancelled: bool,
     }
@@ -450,6 +453,7 @@ mod ui {
         y += row_h + 6;
         create_label(hwnd, margin, y + 4, label_w, 20, "Base URL", 2006, font);
         let base_url = create_edit(hwnd, field_x, y, field_w, field_h, ID_BASE_URL, font, false);
+        set_cue_banner(base_url, "https://api.example.com/v1");
         set_text(base_url, &initial.provider_base_url);
         y += row_h + 6;
         create_label(hwnd, margin, y + 4, label_w, 20, "Model", 2007, font);
@@ -748,6 +752,7 @@ mod ui {
                 base_url: ptr::null_mut(),
                 model: ptr::null_mut(),
                 api_key: ptr::null_mut(),
+                previous_api_key: initial.api_key.clone(),
                 result: None,
                 cancelled: true,
             });
@@ -916,6 +921,8 @@ mod ui {
 
         create_label(hwnd, margin, y + 4, label_w, 20, "Base URL", 2101, font);
         let base_url = create_edit(hwnd, field_x, y, field_w, field_h, ID_LLM_BASE_URL, font, false);
+        // Base (…/v1) or full (…/chat/completions) both work.
+        set_cue_banner(base_url, "https://openrouter.ai/api/v1");
         set_text(base_url, &initial.base_url);
         y += row_h + 6;
 
@@ -926,7 +933,17 @@ mod ui {
 
         create_label(hwnd, margin, y + 4, label_w, 20, "API Key", 2103, font);
         let api_key = create_edit(hwnd, field_x, y, field_w, field_h, ID_LLM_API_KEY, font, true);
-        set_text(api_key, &initial.api_key);
+        // Never show the secret or env: ref in the field — leave blank to keep saved key.
+        set_text(api_key, "");
+        let has_saved_key = !initial.api_key.trim().is_empty();
+        set_cue_banner(
+            api_key,
+            if has_saved_key {
+                "Key saved. Paste a new one to replace it"
+            } else {
+                "Paste API key (optional for local models)"
+            },
+        );
         y += row_h + 18;
 
         create_separator(hwnd, margin, y, LLM_WIN_WIDTH - margin * 2 - 16, 2104);
@@ -982,11 +999,17 @@ mod ui {
         match id {
             ID_LLM_OK if code == BN_CLICKED || code == 0 => {
                 let draft = LLM_STATE.with(|cell| {
-                    cell.borrow().as_ref().map(|state| LlmDraft {
-                        enabled: is_checked(state.enabled),
-                        base_url: get_text(state.base_url),
-                        model: get_text(state.model),
-                        api_key: get_text(state.api_key),
+                    cell.borrow().as_ref().map(|state| {
+                        let entered = get_text(state.api_key);
+                        LlmDraft {
+                            enabled: is_checked(state.enabled),
+                            base_url: get_text(state.base_url),
+                            model: get_text(state.model),
+                            api_key: keep_or_replace_llm_api_key(
+                                &entered,
+                                &state.previous_api_key,
+                            ),
+                        }
                     })
                 });
                 let Some(draft) = draft else {
@@ -1543,6 +1566,13 @@ mod ui {
 
     unsafe fn set_text(hwnd: HWND, text: &str) {
         SetWindowTextW(hwnd, to_wide(text).as_ptr());
+    }
+
+    /// Gray placeholder text shown while an edit control is empty.
+    unsafe fn set_cue_banner(hwnd: HWND, text: &str) {
+        let wide = to_wide(text);
+        // wParam FALSE: hide cue when the control has focus (standard Windows behavior).
+        SendMessageW(hwnd, EM_SETCUEBANNER, 0, wide.as_ptr() as LPARAM);
     }
 
     unsafe fn get_text(hwnd: HWND) -> String {

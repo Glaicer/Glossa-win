@@ -1,7 +1,12 @@
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{collections::BTreeSet, env, fs, path::Path};
 
 use glossa_app::AppError;
 use glossa_core::{AppConfig, InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
+
+use crate::setup::set_user_environment_variable;
+
+/// User env var used when an LLM API key is pasted in Settings (never written literally to config).
+pub(super) const LLM_API_KEY_ENV: &str = "GLOSSA_LLM_API_KEY";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsValues {
@@ -213,12 +218,76 @@ fn take_trailing_blank_lines(updated: &mut String) -> String {
 
 pub(super) fn write_settings_to_config(
     path: &Path,
-    settings: &SettingsValues,
+    settings: &mut SettingsValues,
 ) -> Result<(), AppError> {
+    settings.llm_api_key = secure_llm_api_key_for_config(&settings.llm_api_key)?;
     let source = fs::read_to_string(path)
         .map_err(|error| AppError::io("failed to read config.toml", error))?;
     let updated = apply_settings_to_config(&source, settings)?;
     fs::write(path, updated).map_err(|error| AppError::io("failed to write config.toml", error))
+}
+
+/// Turns a pasted LLM API key into a config-safe value.
+///
+/// - empty → empty (local models with no auth)
+/// - `env:NAME` → kept as-is
+/// - any other text (pasted secret) → stored in the user environment as
+///   [`LLM_API_KEY_ENV`], config gets `env:GLOSSA_LLM_API_KEY`
+pub(super) fn secure_llm_api_key_for_config(entered: &str) -> Result<String, AppError> {
+    match plan_llm_api_key_persist(entered)? {
+        LlmApiKeyPersist::Empty => Ok(String::new()),
+        LlmApiKeyPersist::EnvRef(value) => Ok(value),
+        LlmApiKeyPersist::StoreSecret { env_name, secret } => {
+            set_user_environment_variable(env_name, &secret)?;
+            // So a same-process restart resolves the key without requiring a full logoff.
+            // SAFETY: settings save path; tray is single-threaded for this call.
+            unsafe {
+                env::set_var(env_name, &secret);
+            }
+            Ok(format!("env:{env_name}"))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum LlmApiKeyPersist {
+    Empty,
+    EnvRef(String),
+    StoreSecret {
+        env_name: &'static str,
+        secret: String,
+    },
+}
+
+/// Pure planning step for LLM API key persistence (unit-tested without registry writes).
+pub(super) fn plan_llm_api_key_persist(entered: &str) -> Result<LlmApiKeyPersist, AppError> {
+    let trimmed = entered.trim();
+    if trimmed.is_empty() {
+        return Ok(LlmApiKeyPersist::Empty);
+    }
+    if let Some(name) = trimmed.strip_prefix("env:") {
+        if name.is_empty() {
+            return Err(AppError::message(
+                "LLM API key env source must not be empty (use env:VARIABLE_NAME).",
+            ));
+        }
+        return Ok(LlmApiKeyPersist::EnvRef(format!("env:{name}")));
+    }
+    Ok(LlmApiKeyPersist::StoreSecret {
+        env_name: LLM_API_KEY_ENV,
+        secret: trimmed.to_owned(),
+    })
+}
+
+/// Resolves what to keep when the API key field is left blank in the LLM dialog.
+#[must_use]
+pub(super) fn keep_or_replace_llm_api_key(entered: &str, previous: &str) -> String {
+    let trimmed = entered.trim();
+    if trimmed.is_empty() {
+        previous.to_owned()
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 pub(super) fn input_backend_id(value: InputBackend) -> &'static str {
@@ -408,7 +477,10 @@ impl SettingUpdate {
 mod tests {
     use glossa_core::{InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
 
-    use super::{apply_settings_to_config, quoted, SettingsValues};
+    use super::{
+        apply_settings_to_config, keep_or_replace_llm_api_key, plan_llm_api_key_persist, quoted,
+        LlmApiKeyPersist, SettingsValues, LLM_API_KEY_ENV,
+    };
 
     fn valid_config_source() -> String {
         r#"[input]
@@ -667,5 +739,60 @@ api_key = "env:LLM_KEY"
         let quoted = quoted(r#"env:\"quoted\"\key"#);
 
         assert_eq!(quoted, r#""env:\\\"quoted\\\"\\key""#);
+    }
+
+    #[test]
+    fn plan_llm_api_key_should_store_pasted_secret_in_fixed_env_var() {
+        let plan = plan_llm_api_key_persist("  sk-or-v1-secret  ").expect("plan");
+        assert_eq!(
+            plan,
+            LlmApiKeyPersist::StoreSecret {
+                env_name: LLM_API_KEY_ENV,
+                secret: "sk-or-v1-secret".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn plan_llm_api_key_should_keep_env_refs() {
+        let plan = plan_llm_api_key_persist("env:OPENROUTER_API_KEY").expect("plan");
+        assert_eq!(
+            plan,
+            LlmApiKeyPersist::EnvRef("env:OPENROUTER_API_KEY".into())
+        );
+    }
+
+    #[test]
+    fn plan_llm_api_key_should_treat_blank_as_empty() {
+        assert_eq!(
+            plan_llm_api_key_persist("   ").expect("plan"),
+            LlmApiKeyPersist::Empty
+        );
+    }
+
+    #[test]
+    fn plan_llm_api_key_should_reject_empty_env_name() {
+        let err = plan_llm_api_key_persist("env:").expect_err("empty env name");
+        assert!(err.to_string().contains("env"));
+    }
+
+    #[test]
+    fn keep_or_replace_should_preserve_previous_when_field_blank() {
+        assert_eq!(
+            keep_or_replace_llm_api_key("", "env:GLOSSA_LLM_API_KEY"),
+            "env:GLOSSA_LLM_API_KEY"
+        );
+        assert_eq!(
+            keep_or_replace_llm_api_key("  ", "env:GLOSSA_LLM_API_KEY"),
+            "env:GLOSSA_LLM_API_KEY"
+        );
+    }
+
+    #[test]
+    fn keep_or_replace_should_use_new_value_when_entered() {
+        assert_eq!(
+            keep_or_replace_llm_api_key("sk-new", "env:GLOSSA_LLM_API_KEY"),
+            "sk-new"
+        );
     }
 }

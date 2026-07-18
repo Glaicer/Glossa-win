@@ -90,6 +90,9 @@ pub fn validate_answers(answers: &SetupAnswers) -> Result<(), AppError> {
     if answers.shortcut.trim().is_empty() {
         return Err(AppError::message("Shortcut must not be empty."));
     }
+    crate::hotkey::parse_shortcut(answers.shortcut.trim()).map_err(|error| {
+        AppError::message(format!("Invalid hotkey: {error}"))
+    })?;
     if answers.provider == ProviderKind::OpenAiCompatible && answers.base_url.trim().is_empty() {
         return Err(AppError::message(
             "Base URL is required for OpenAI-compatible providers.",
@@ -322,7 +325,8 @@ fn create_startup_shortcut(exe: &Path, config: &Path) -> Result<(), AppError> {
     }
 }
 
-fn set_user_environment_variable(name: &str, value: &str) -> Result<(), AppError> {
+/// Writes a user-scoped environment variable (`HKCU\Environment`) and broadcasts the change.
+pub(crate) fn set_user_environment_variable(name: &str, value: &str) -> Result<(), AppError> {
     #[cfg(windows)]
     {
         set_user_environment_variable_windows(name, value)

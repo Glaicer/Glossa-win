@@ -39,6 +39,7 @@ fn run_setup_wizard_windows() -> Result<WizardOutcome, AppError> {
         start_daemon_detached(&result.exe_path, &result.config_path)?;
     }
 
+    let hotkey_display = crate::hotkey::format_shortcut_display(&answers.shortcut);
     let summary = format!(
         "Glossa is ready.\n\n\
          Config: {}\n\
@@ -48,7 +49,7 @@ fn run_setup_wizard_windows() -> Result<WizardOutcome, AppError> {
          Esc cancels an in-progress recording.{}",
         result.config_path.display(),
         result.install_dir.display(),
-        answers.shortcut,
+        hotkey_display,
         if result.start_now {
             "\n\nThe daemon has been started (tray icon)."
         } else {
@@ -104,7 +105,7 @@ mod ui {
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
-            Controls::BST_CHECKED,
+            Controls::{BST_CHECKED, EM_SETCUEBANNER},
             Input::KeyboardAndMouse::{EnableWindow, SetFocus},
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
@@ -121,6 +122,7 @@ mod ui {
         },
     };
 
+    use crate::hotkey::{create_hotkey_picker, hotkey_picker_get};
     use crate::setup::install::{default_base_url, default_model, validate_answers, SetupAnswers};
     use crate::win_style::{
         activate_visual_styles, apply_titlebar_theme, center_window, create_body_font,
@@ -427,6 +429,7 @@ mod ui {
 
         create_static(hwnd, margin, y + 4, label_w, 20, "Base URL", ID_LBL_BASE, font);
         let base_url = create_edit(hwnd, field_x, y, field_w, field_h, ID_BASE_URL, font, false);
+        set_cue_banner(base_url, "https://api.example.com/v1");
         set_text(base_url, default_base_url(ProviderKind::Groq));
         y += row_h + 6;
 
@@ -447,9 +450,31 @@ mod ui {
         y += 26;
 
         create_static(hwnd, margin, y + 4, label_w, 20, "Hotkey", 2007, font);
-        let shortcut = create_edit(hwnd, field_x, y, field_w, field_h, ID_SHORTCUT, font, false);
-        set_text(shortcut, "Ctrl+Alt+Space");
-        y += row_h + 6;
+        let shortcut = create_hotkey_picker(
+            hwnd,
+            field_x,
+            y,
+            field_w,
+            field_h + 4,
+            ID_SHORTCUT,
+            font,
+            "Ctrl+Alt+Space",
+        );
+        if shortcut.is_null() {
+            return Err(AppError::message("failed to create hotkey picker"));
+        }
+        y += field_h + 8;
+        create_static(
+            hwnd,
+            field_x,
+            y,
+            field_w,
+            18,
+            "Click the field, then press a key combination",
+            2013,
+            font,
+        );
+        y += 22;
 
         create_static(hwnd, margin, y + 4, label_w, 20, "Mode", 2008, font);
         let mode_ptt = create_radio(
@@ -677,7 +702,7 @@ mod ui {
                     api_key: get_text(state.api_key),
                     base_url: get_text(state.base_url),
                     model: get_text(state.model),
-                    shortcut: get_text(state.shortcut),
+                    shortcut: hotkey_picker_get(state.shortcut),
                     mode,
                     theme,
                     autostart: is_checked(state.autostart),
@@ -932,6 +957,13 @@ mod ui {
 
     unsafe fn set_text(hwnd: HWND, text: &str) {
         SetWindowTextW(hwnd, to_wide(text).as_ptr());
+    }
+
+    /// Gray placeholder text shown while an edit control is empty.
+    unsafe fn set_cue_banner(hwnd: HWND, text: &str) {
+        let wide = to_wide(text);
+        // wParam FALSE: hide cue when the control has focus (standard Windows behavior).
+        SendMessageW(hwnd, EM_SETCUEBANNER, 0, wide.as_ptr() as LPARAM);
     }
 
     unsafe fn get_text(hwnd: HWND) -> String {

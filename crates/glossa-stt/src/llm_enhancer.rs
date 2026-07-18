@@ -17,15 +17,40 @@ pub struct HttpTextEnhancer {
 
 impl HttpTextEnhancer {
     /// Creates a new HTTP text enhancer.
+    ///
+    /// `base_url` may be either an OpenAI-compatible API root
+    /// (`https://openrouter.ai/api/v1` or with a trailing slash) or the full
+    /// chat-completions URL (`…/chat/completions`).
     #[must_use]
     pub fn new(base_url: String, model: String, api_key: String) -> Self {
-        let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+        let endpoint = resolve_chat_completions_endpoint(&base_url);
         Self {
             endpoint,
             model,
             api_key,
             client: reqwest::Client::new(),
         }
+    }
+}
+
+/// Resolves the chat-completions endpoint from a base or full URL.
+///
+/// Accepts:
+/// - `https://host/v1`
+/// - `https://host/v1/`
+/// - `https://host/v1/chat/completions`
+/// - `https://host/v1/chat/completions/`
+fn resolve_chat_completions_endpoint(base_url: &str) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    const SUFFIX: &str = "/chat/completions";
+    if trimmed.len() >= SUFFIX.len()
+        && trimmed
+            .get(trimmed.len() - SUFFIX.len()..)
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(SUFFIX))
+    {
+        trimmed.to_owned()
+    } else {
+        format!("{trimmed}{SUFFIX}")
     }
 }
 
@@ -221,7 +246,8 @@ mod tests {
     use glossa_app::ports::TextEnhancer;
 
     use super::{
-        build_messages, llm_status_error_message, ChatCompletionResponse, HttpTextEnhancer,
+        build_messages, llm_status_error_message, resolve_chat_completions_endpoint,
+        ChatCompletionResponse, HttpTextEnhancer,
     };
 
     struct CapturedRequest {
@@ -322,6 +348,46 @@ mod tests {
             String::new(),
         );
         assert_eq!(enhancer.name(), "llm");
+    }
+
+    #[test]
+    fn resolve_endpoint_should_accept_base_url_with_or_without_trailing_slash() {
+        assert_eq!(
+            resolve_chat_completions_endpoint("https://openrouter.ai/api/v1"),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+        assert_eq!(
+            resolve_chat_completions_endpoint("https://openrouter.ai/api/v1/"),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn resolve_endpoint_should_accept_full_chat_completions_url() {
+        assert_eq!(
+            resolve_chat_completions_endpoint(
+                "https://openrouter.ai/api/v1/chat/completions"
+            ),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+        assert_eq!(
+            resolve_chat_completions_endpoint(
+                "https://openrouter.ai/api/v1/chat/completions/"
+            ),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn resolve_endpoint_should_not_double_append_suffix() {
+        let endpoint = resolve_chat_completions_endpoint(
+            "https://openrouter.ai/api/v1/chat/completions",
+        );
+        assert!(!endpoint.ends_with("/chat/completions/chat/completions"));
+        assert_eq!(
+            endpoint.matches("/chat/completions").count(),
+            1
+        );
     }
 
     #[test]
