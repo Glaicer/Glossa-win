@@ -3,115 +3,148 @@
 </p>
 
 <p align="left" style="border-left: 3px solid; padding-left: 12px; margin-left: 12px; font-size: 16px; font-weight: 600; margin-block: 20px">
-  <em>Press a hotkey, speak, and drop the transcription straight into whatever field is focused</em>
+  <em>Press a hotkey, speak, and drop the transcription straight into whatever field is focused.</em>
 </p>
 
-Glossa for Windows is a free, open source speech-to-text daemon. It records audio from your microphone, sends it to a speech-to-text provider, copies the result to the clipboard, and pastes it into the active window.
+Glossa is a free, open-source dictation app for Windows. It runs quietly in the system tray: press or hold a global hotkey, speak, and your words appear wherever your cursor is.
 
-It works with Groq, OpenAI, and other OpenAI-compatible speech-to-text providers, including self-hosted ones.
+Under the hood, Glossa records your microphone, sends the audio to your chosen speech-to-text provider, and pastes the result into the active app. It works with Groq, OpenAI, other OpenAI-compatible providers, and self-hosted services.
 
 This repository is the **Windows port** of the [Linux Glossa project](https://github.com/Glaicer/glossa).
 
-I personally recommend using [Groq](https://groq.com/) as it offers the following benefits:
+## Why Glossa?
 
-- Generous free limits (2,000 requests per day) and low prices (starting at $0.04 per hour) when you need more
-- Amazingly fast LPU, capable of processing minutes of audio in seconds
-- Whisper V3 Large and Whisper V3 Large Turbo, which support multilingual input out of the box
+- Dictate into almost any Windows app without switching windows
+- Choose between push-to-talk and toggle recording modes
+- Use multilingual Whisper models through Groq, OpenAI, or a compatible provider
+- Optionally polish transcripts with an LLM before they are pasted
+- Keep your clipboard intact: Glossa restores its previous contents after pasting
+- Start Glossa automatically when you sign in
+- Cancel a recording at any time with Esc
+- No extra clipboard or keyboard automation tools required
 
-## Features
+## Before you start
 
-- Runs as a background daemon with a system tray icon
-- Supports both toggle and push-to-talk modes via a global hotkey
-- Works with Groq, OpenAI, and other OpenAI-compatible STT providers (including self-hosted setups)
-- Optional OpenAI-compatible LLM enhancer to fix punctuation and obvious transcription mistakes
-- Configurable via `%APPDATA%\glossa\config.toml`
-- Autostart via Startup folder (`glossa service start`)
-- Pastes using standard clipboard shortcuts such as `Ctrl+V`, `Ctrl+Shift+V`, or `Shift+Insert`
-- Restores the previous clipboard contents after pasting
-- Esc cancels an in-progress recording
-
-## Requirements
+You will need:
 
 - Windows 10 or Windows 11
 - A working microphone
-- An API key for your STT provider (for example `GROQ_API_KEY`)
+- An API key for a speech-to-text provider
 
-No extra clipboard or keystroke tools are required — paste and clipboard use native Windows APIs.
+For most people, I recommend [Groq](https://groq.com/). Its Whisper models are fast, multilingual, and available with a generous free tier. `whisper-large-v3-turbo` is a good default for everyday dictation.
+
+### Get a Groq API key for STT
+
+1. Create or sign in to your [Groq account](https://console.groq.com/).
+2. Open the [Groq API Keys page](https://console.groq.com/keys) and select **Create API Key**.
+3. Copy the key and keep it somewhere safe. Treat it like a password.
+4. Paste it into the Glossa setup wizard when asked. Glossa stores it as a Windows user environment variable, not as plain text in your config file.
+
+That is all you need for speech-to-text. The same Groq key can also power the optional LLM Enhancer.
+
+### LLM Enhancer
+
+Raw speech-to-text often gets the words right but leaves you with missing punctuation, filler words, or the occasional obvious mistake. The LLM Enhancer cleans up the transcript before Glossa pastes it, while keeping your wording, meaning, and language intact.
+
+It can:
+
+- Add punctuation and capitalization
+- Correct clear speech-recognition mistakes
+- Remove hesitation words and accidental repetitions
+- Preserve spoken questions and commands instead of answering them
+
+When the enhancer is enabled, Glossa sends the transcript text—not your audio—to a separate OpenAI-compatible language model. This adds a small amount of processing time and uses that provider's API quota.
+
+I recommend either:
+
+- **Groq with `openai/gpt-oss-120b`** for a fast, consistent model. You can reuse your Groq API key.
+- **OpenRouter with `openrouter/free`** if you want it to choose from [currently available free models](https://openrouter.ai/docs/guides/routing/routers/free-router). The model selected by OpenRouter may vary between requests.
+
+You can configure and enable the enhancer from **Settings → LLM enhancer…**. After that, the **AI enhancer** tray item gives you a quick on/off toggle. Manual configuration examples are included in the [Configuration](#configuration) section below.
 
 ## Install
 
-### Easy install (recommended)
+1. Download `glossa.exe` from the latest [GitHub release](https://github.com/Glaicer/Glossa-win/releases).
+2. Run it.
+3. Follow the setup wizard.
 
-1. Get `glossa.exe` — download the latest release from [GitHub Releases](https://github.com/Glaicer/Glossa-win/releases), or build from source (below).
-2. Run it once:
+On first run, Glossa will:
 
-On first run (when no config exists), Glossa opens a **setup wizard** that installs everything for you:
+- Install the app and its tray icons and sounds under `%LOCALAPPDATA%\glossa`
+- Create `%APPDATA%\glossa\config.toml`
+- Store your speech-to-text API key as a Windows user environment variable
+- Offer to start automatically when you sign in
+- Offer to start Glossa immediately
 
-- Copies the binary and tray/sound assets to `%LOCALAPPDATA%\glossa`
-- Writes `%APPDATA%\glossa\config.toml`
-- Stores your speach-to-text API key as a user environment variable
-- Optionally enables start at login
-- Optionally starts the daemon immediately
-
-You can also launch the wizard explicitly at any time:
+You can run the setup wizard again at any time:
 
 ```powershell
 .\glossa.exe setup
 ```
 
-After setup, use the tray icon or hold/press your hotkey (default `Ctrl+Alt+Space`) to dictate. Esc cancels an in-progress recording.
+## Using Glossa
 
-### Build from source
+The default shortcut is `Ctrl+Alt+Space` in push-to-talk mode:
 
-Requires a recent [Rust toolchain](https://rustup.rs/) on Windows.
+1. Hold the shortcut.
+2. Speak.
+3. Release the shortcut to transcribe and paste.
+
+In toggle mode, press the shortcut once to start recording and again to stop. Press Esc if you want to cancel a recording without transcribing it.
+
+Right-click the tray icon to:
+
+- Change the global shortcut
+- Open all settings
+- Quickly enable or disable the AI enhancer
+- Check for updates
+- Exit Glossa
+
+## Updating Glossa
+
+The easiest way to update is to right-click the tray icon and select **Update…**. You can also run:
 
 ```powershell
-cargo build --release
-.\target\release\glossa.exe setup
+& "$env:LOCALAPPDATA\glossa\glossa.exe" update
 ```
 
-That runs the same wizard as above, using the binary you just built.
-
-Alternatively, copy files without the wizard:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File contrib\windows\install.ps1
-```
-
-Then set your API key and start the daemon:
-
-```powershell
-[System.Environment]::SetEnvironmentVariable("GROQ_API_KEY", "gsk_...", "User")
-& "$env:LOCALAPPDATA\glossa\glossa.exe" --config "$env:APPDATA\glossa\config.toml" daemon
-
-# Optional: start at login
-& "$env:LOCALAPPDATA\glossa\glossa.exe" service start
-```
-
-## CLI commands
-
-| Command | Description |
-|---------|-------------|
-| `glossa` / `glossa daemon` | Run the daemon; first run opens the setup wizard if no config exists |
-| `glossa setup` | Interactive first-run installer (API key, hotkey, assets, autostart) |
-| `glossa service start\|stop\|restart` | Manage Startup-folder autostart |
-| `glossa ctl toggle` | Toggle recording over IPC |
-| `glossa ctl shutdown` | Ask the daemon to shut down |
-| `glossa status` | Print the current daemon status |
-| `glossa doctor` | Run environment and configuration diagnostics |
-| `glossa update` | Check GitHub releases and install the latest update |
+Glossa downloads the latest release, verifies its checksum, installs it, and restarts the daemon.
 
 ## Configuration
 
-Most day-to-day controls are available from the tray menu:
+Most settings are available from the tray menu, so you normally do not need to edit a file by hand. For advanced changes, edit `%APPDATA%\glossa\config.toml`. See [contrib/examples/config.toml](contrib/examples/config.toml) for the complete reference.
 
-- Change shortcut…
-- Settings (full configuration dialog)
-- Update…
-- AI enhancer (quick toggle)
-- Exit
+### LLM Enhancer settings
 
-The Settings dialog covers input backend/mode, CLI control, STT provider, paste, theme, and the LLM enhancer. Edit `%APPDATA%\glossa\config.toml` directly for advanced options. Use [contrib/examples/config.toml](contrib/examples/config.toml) as the reference.
+The Settings dialog is the easiest way to configure the enhancer. If you prefer to edit `config.toml`, use one of these presets.
+
+Groq with GPT-OSS 120B:
+
+```toml
+[LLM]
+enabled = true
+base_url = "https://api.groq.com/openai/v1"
+model = "openai/gpt-oss-120b"
+api_key = "env:GROQ_API_KEY"
+```
+
+OpenRouter's free-model router:
+
+```toml
+[LLM]
+enabled = true
+base_url = "https://openrouter.ai/api/v1"
+model = "openrouter/free"
+api_key = "env:OPENROUTER_API_KEY"
+```
+
+Create an OpenRouter key on the [OpenRouter Keys page](https://openrouter.ai/settings/keys). Set it as a Windows user environment variable before using the manual configuration:
+
+```powershell
+[System.Environment]::SetEnvironmentVariable("OPENROUTER_API_KEY", "sk-or-...", "User")
+```
+
+Start Glossa from a new terminal after adding an environment variable. If you paste a key into the Settings dialog instead, Glossa stores it in a user environment variable for you rather than writing the secret into `config.toml`.
 
 ### Hotkey
 
@@ -122,12 +155,12 @@ shortcut = "Ctrl+Alt+Space" # also accepts <Ctrl><Alt>space
 mode = "push-to-talk"       # or "toggle"
 ```
 
-### IPC
+### CLI control
 
 ```toml
 [control]
 enable_cli = true
-socket_path = "auto"   # loopback TCP: 127.0.0.1:47823
+socket_path = "auto" # loopback TCP: 127.0.0.1:47823
 ```
 
 ### Logging
@@ -135,10 +168,55 @@ socket_path = "auto"   # loopback TCP: 127.0.0.1:47823
 ```toml
 [logging]
 level = "info"
-console = true         # legacy alias: journal
+console = true # legacy alias: journal
 ```
 
-## Development
+## Technical reference
+
+### CLI commands
+
+| Command | Description |
+|---------|-------------|
+| `glossa` / `glossa daemon` | Run the daemon; first run opens the setup wizard if no config exists |
+| `glossa setup` | Run the interactive installer |
+| `glossa service start\|stop\|restart` | Manage start-at-login through the Windows Startup folder |
+| `glossa ctl toggle` | Toggle recording over the local control channel |
+| `glossa ctl shutdown` | Ask the daemon to shut down |
+| `glossa status` | Show the current daemon status |
+| `glossa doctor` | Check the environment and configuration for problems |
+| `glossa update` | Check GitHub Releases and install the latest update |
+
+### Manual installation
+
+To install the files without the setup wizard:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File contrib\windows\install.ps1
+```
+
+Set your Groq API key and start the daemon:
+
+```powershell
+[System.Environment]::SetEnvironmentVariable("GROQ_API_KEY", "gsk_...", "User")
+$env:GROQ_API_KEY = "gsk_..." # Make it available in this terminal too
+& "$env:LOCALAPPDATA\glossa\glossa.exe" --config "$env:APPDATA\glossa\config.toml" daemon
+
+# Optional: start automatically when you sign in
+& "$env:LOCALAPPDATA\glossa\glossa.exe" service start
+```
+
+### Build from source
+
+Building requires a recent [Rust toolchain](https://rustup.rs/) on Windows.
+
+```powershell
+cargo build --release
+.\target\release\glossa.exe setup
+```
+
+This builds Glossa and launches the same setup wizard used by the release build.
+
+### Development
 
 ```powershell
 cargo build
@@ -147,11 +225,11 @@ cargo clippy --workspace
 cargo run --package glossa-bin -- --config contrib\examples\config.toml daemon
 ```
 
-When developing from the repo, point the `[ui]` icon/sound paths in your config at `contrib\assets\...`.
+When running from the repository, point the `[ui]` icon and sound paths in your config to `contrib\assets\...`.
 
-## Architecture
+### Architecture
 
-```
+```text
 glossa-bin
   ├── glossa-app          (state machine + port traits)
   │     └── glossa-core
@@ -165,14 +243,11 @@ glossa-bin
         └── doctor / autostart / GitHub-release updater
 ```
 
-## Updating
+See [AGENTS.md](AGENTS.md) for the full agent-oriented architecture notes.
 
-Installed builds ship `update.ps1` next to `glossa.exe` under `%LOCALAPPDATA%\glossa`.
+### Packaging a release
 
-- **Tray:** right-click the tray icon → **Update…**
-- **CLI:** `glossa update`
-
-The bootstrapper downloads the versioned `glossa-update.ps1` and `sha256sums.txt` from the latest [GitHub release](https://github.com/Glaicer/Glossa-win/releases), verifies the checksum, then installs `glossa-windows-x86_64.zip` (binary, assets, `VERSION`) and restarts the daemon.
+Installed builds include `update.ps1` next to `glossa.exe` under `%LOCALAPPDATA%\glossa`. The updater downloads the versioned `glossa-update.ps1` and `sha256sums.txt` from the latest GitHub release before installing `glossa-windows-x86_64.zip`.
 
 To package a release from a local build:
 
@@ -180,13 +255,11 @@ To package a release from a local build:
 powershell -NoProfile -ExecutionPolicy Bypass -File build-release-zip.ps1 -Version 0.9.0
 ```
 
-Upload the three files under `target\release\github\<version>\` to a GitHub release:
+Upload these files from `target\release\github\<version>\` to a GitHub release:
 
 - `glossa-windows-x86_64.zip`
 - `glossa-update.ps1`
 - `sha256sums.txt`
-
-See [AGENTS.md](AGENTS.md) for the full agent-oriented architecture notes.
 
 ## License
 
