@@ -60,7 +60,7 @@ mod ui {
                 InitCommonControlsEx, SetWindowTheme, BST_CHECKED, EM_SETCUEBANNER,
                 ICC_STANDARD_CLASSES, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX,
             },
-            Input::KeyboardAndMouse::{EnableWindow, SetFocus},
+            Input::KeyboardAndMouse::{EnableWindow, SetActiveWindow, SetFocus},
             WindowsAndMessaging::{
                 AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DestroyWindow,
                 DispatchMessageW, GetClientRect, GetMessageW, GetSystemMetrics, GetWindowLongPtrW,
@@ -167,6 +167,8 @@ mod ui {
         bg_brush: HBRUSH,
         edit_brush: HBRUSH,
         dark: bool,
+        /// Owner Settings window; re-enabled before this dialog is destroyed.
+        owner: HWND,
         enabled: HWND,
         base_url: HWND,
         model: HWND,
@@ -600,10 +602,10 @@ mod ui {
                 let Some(draft) = draft else {
                     return;
                 };
-                EnableWindow(hwnd, 0);
-                let llm_result = show_llm_dialog(&draft, dark);
-                EnableWindow(hwnd, 1);
-                match llm_result {
+                // Modal over Settings: disable owner, own the child, re-enable before destroy
+                // (if the child is destroyed while the owner is still disabled, Windows
+                // often minimizes the disabled top-level window).
+                match show_llm_dialog(hwnd, &draft, dark) {
                     Ok(Some(updated)) => {
                         STATE.with(|cell| {
                             if let Some(state) = cell.borrow_mut().as_mut() {
@@ -720,7 +722,11 @@ mod ui {
 
     // --- LLM enhancer sub-dialog ---
 
-    unsafe fn show_llm_dialog(initial: &LlmDraft, dark: bool) -> Result<Option<LlmDraft>, AppError> {
+    unsafe fn show_llm_dialog(
+        owner: HWND,
+        initial: &LlmDraft,
+        dark: bool,
+    ) -> Result<Option<LlmDraft>, AppError> {
         let _visual_styles = activate_visual_styles();
         ensure_common_controls();
 
@@ -758,6 +764,7 @@ mod ui {
                 bg_brush: ptr::null_mut(),
                 edit_brush: ptr::null_mut(),
                 dark,
+                owner,
                 enabled: ptr::null_mut(),
                 base_url: ptr::null_mut(),
                 model: ptr::null_mut(),
@@ -768,8 +775,12 @@ mod ui {
             });
         });
 
+        // Disable owner before showing the modal child (re-enabled in close_llm_dialog).
+        EnableWindow(owner, 0);
+
         let title = to_wide("LLM enhancer");
         let (outer_w, outer_h) = outer_size_for_client(LLM_WIN_WIDTH, LLM_WIN_HEIGHT);
+        // Pass `owner` so this is an owned top-level window (stays above Settings).
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE,
             class_wide.as_ptr(),
@@ -779,13 +790,15 @@ mod ui {
             CW_USEDEFAULT,
             outer_w,
             outer_h,
-            ptr::null_mut(),
+            owner,
             ptr::null_mut(),
             hinstance,
             initial as *const LlmDraft as *const _,
         );
 
         if hwnd.is_null() {
+            EnableWindow(owner, 1);
+            SetActiveWindow(owner);
             LLM_STATE.with(|cell| {
                 cell.borrow_mut().take();
             });
@@ -821,6 +834,10 @@ mod ui {
             DispatchMessageW(&msg);
         }
 
+        // Safety net if the dialog exited without close_llm_dialog (e.g. WM_QUIT).
+        EnableWindow(owner, 1);
+        SetActiveWindow(owner);
+
         LLM_STATE.with(|cell| {
             let state = cell.borrow_mut().take();
             match state {
@@ -828,6 +845,24 @@ mod ui {
                 _ => Ok(None),
             }
         })
+    }
+
+    /// Re-enable the Settings owner *before* destroying the LLM dialog.
+    ///
+    /// If the only remaining top-level window is still disabled when this one
+    /// is destroyed, Windows cannot activate it and often minimizes it instead.
+    unsafe fn close_llm_dialog(hwnd: HWND) {
+        let owner = LLM_STATE.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .map(|s| s.owner)
+                .unwrap_or(ptr::null_mut())
+        });
+        if !owner.is_null() {
+            EnableWindow(owner, 1);
+            SetActiveWindow(owner);
+        }
+        DestroyWindow(hwnd);
     }
 
     unsafe extern "system" fn llm_wnd_proc(
@@ -843,7 +878,7 @@ mod ui {
                 let initial = &*(create.lpCreateParams as *const LlmDraft);
                 if let Err(error) = on_llm_create(hwnd, initial) {
                     show_error(&error.to_string());
-                    DestroyWindow(hwnd);
+                    close_llm_dialog(hwnd);
                 }
                 0
             }
@@ -877,7 +912,7 @@ mod ui {
                         state.result = None;
                     }
                 });
-                DestroyWindow(hwnd);
+                close_llm_dialog(hwnd);
                 0
             }
             WM_DESTROY => {
@@ -1050,7 +1085,7 @@ mod ui {
                         state.cancelled = false;
                     }
                 });
-                DestroyWindow(hwnd);
+                close_llm_dialog(hwnd);
             }
             ID_LLM_CANCEL if code == BN_CLICKED || code == 0 => {
                 LLM_STATE.with(|cell| {
@@ -1059,7 +1094,7 @@ mod ui {
                         state.result = None;
                     }
                 });
-                DestroyWindow(hwnd);
+                close_llm_dialog(hwnd);
             }
             _ => {}
         }
