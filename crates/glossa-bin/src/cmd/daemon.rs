@@ -11,7 +11,7 @@ use glossa_platform_windows::{
     setup::{run_setup_wizard, ConfigPathStatus, WizardOutcome},
 };
 
-use crate::bootstrap::{build_actor, build_tray, init_tracing, load_config};
+use crate::bootstrap::{build_actor, build_tray, init_tracing, load_config, prepare_runtime_config};
 
 const FATAL_ERROR_TITLE: &str = "Glossa fatal error";
 
@@ -62,6 +62,7 @@ async fn run_inner(config_path: Option<std::path::PathBuf>) -> anyhow::Result<()
 async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> {
     let mut config = load_config(&config_path).await?;
     init_tracing(&config)?;
+    config = prepare_runtime_config(config);
     info!(path = %config_path.display(), "starting glossa daemon");
     let tray = build_tray(&config_path, &config);
 
@@ -117,7 +118,7 @@ async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> 
             ActorExit::Shutdown => break,
             ActorExit::Restart => {
                 info!(path = %config_path.display(), "restarting glossa daemon");
-                config = load_config(&config_path).await?;
+                config = prepare_runtime_config(load_config(&config_path).await?);
             }
         }
     }

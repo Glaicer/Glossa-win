@@ -23,6 +23,19 @@ pub async fn load_config(path: &PathBuf) -> anyhow::Result<AppConfig> {
     Ok(config)
 }
 
+/// Applies runtime guards that keep a bad optional feature from blocking startup.
+///
+/// Currently: if the LLM enhancer is on but its API key cannot be resolved,
+/// the enhancer is switched off (empty keys for local models stay allowed).
+pub fn prepare_runtime_config(mut config: AppConfig) -> AppConfig {
+    if config.llm.disable_if_api_key_unavailable() {
+        tracing::warn!(
+            "LLM enhancer was enabled but its API key is unavailable; turning the enhancer off"
+        );
+    }
+    config
+}
+
 /// Loads a config from disk when provided, otherwise falls back to the default config.
 pub async fn load_config_or_default(path: Option<PathBuf>) -> anyhow::Result<AppConfig> {
     match path {
@@ -58,6 +71,7 @@ pub fn build_actor(
     config: AppConfig,
     tray: Arc<dyn TrayPort>,
 ) -> anyhow::Result<(AppActor, glossa_app::AppHandle)> {
+    let config = prepare_runtime_config(config);
     let temp_store = Arc::new(WindowsTempStore::from_audio_config(&config.audio)?);
     let deps = AppDependencies {
         audio_capture: Arc::new(CpalAudioCapture::new()),

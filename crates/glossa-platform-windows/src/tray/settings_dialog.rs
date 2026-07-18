@@ -79,7 +79,7 @@ mod ui {
         },
     };
 
-    use super::super::settings::keep_or_replace_llm_api_key;
+    use super::super::settings::{keep_or_replace_llm_api_key, llm_api_key_is_available};
     use super::SettingsValues;
 
     const CLASS_NAME: &str = "GlossaSettingsDialog";
@@ -989,7 +989,8 @@ mod ui {
         let api_key = create_edit(hwnd, field_x, y, field_w, field_h, ID_LLM_API_KEY, font, true);
         // Never show the secret or env: ref in the field — leave blank to keep saved key.
         set_text(api_key, "");
-        let has_saved_key = !initial.api_key.trim().is_empty();
+        // Only claim a key is saved when it actually resolves (env refs may be unset).
+        let has_saved_key = llm_api_key_is_available(&initial.api_key);
         set_cue_banner(
             api_key,
             if has_saved_key {

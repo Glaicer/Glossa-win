@@ -290,6 +290,27 @@ pub(super) fn keep_or_replace_llm_api_key(entered: &str, previous: &str) -> Stri
     }
 }
 
+/// Whether the configured LLM API key actually resolves to a non-empty secret.
+///
+/// Config may hold `env:NAME` even when the variable is unset; the settings
+/// dialog must not claim a key is saved in that case.
+#[must_use]
+pub(super) fn llm_api_key_is_available(configured: &str) -> bool {
+    use glossa_core::SecretSource;
+
+    let trimmed = configured.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let Ok(source) = SecretSource::try_from(trimmed.to_owned()) else {
+        return false;
+    };
+    match source.resolve() {
+        Ok(value) => !value.trim().is_empty(),
+        Err(_) => false,
+    }
+}
+
 pub(super) fn input_backend_id(value: InputBackend) -> &'static str {
     match value {
         // Prefer the Windows-facing name; "portal" remains a accepted config alias.
@@ -478,8 +499,8 @@ mod tests {
     use glossa_core::{InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
 
     use super::{
-        apply_settings_to_config, keep_or_replace_llm_api_key, plan_llm_api_key_persist, quoted,
-        LlmApiKeyPersist, SettingsValues, LLM_API_KEY_ENV,
+        apply_settings_to_config, keep_or_replace_llm_api_key, llm_api_key_is_available,
+        plan_llm_api_key_persist, quoted, LlmApiKeyPersist, SettingsValues, LLM_API_KEY_ENV,
     };
 
     fn valid_config_source() -> String {
@@ -794,5 +815,23 @@ api_key = "env:LLM_KEY"
             keep_or_replace_llm_api_key("sk-new", "env:GLOSSA_LLM_API_KEY"),
             "sk-new"
         );
+    }
+
+    #[test]
+    fn llm_api_key_is_available_should_be_false_for_empty() {
+        assert!(!llm_api_key_is_available(""));
+        assert!(!llm_api_key_is_available("   "));
+    }
+
+    #[test]
+    fn llm_api_key_is_available_should_be_true_for_literal() {
+        assert!(llm_api_key_is_available("sk-test-key"));
+    }
+
+    #[test]
+    fn llm_api_key_is_available_should_be_false_for_missing_env() {
+        assert!(!llm_api_key_is_available(
+            "env:GLOSSA_TEST_LLM_KEY_THAT_MUST_NOT_EXIST_9f3a2c"
+        ));
     }
 }

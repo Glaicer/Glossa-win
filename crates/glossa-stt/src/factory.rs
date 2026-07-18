@@ -19,13 +19,26 @@ pub fn build_client(config: &AppConfig) -> Result<Arc<dyn SttClient>, glossa_app
 }
 
 /// Builds the text enhancer based on `[LLM]` configuration.
+///
+/// When the enhancer is enabled but the API key cannot be resolved, returns a
+/// no-op enhancer instead of failing (callers should also turn the feature off
+/// via [`LlmConfig::disable_if_api_key_unavailable`]).
 pub fn build_text_enhancer(
     config: &AppConfig,
 ) -> Result<Arc<dyn TextEnhancer>, glossa_app::AppError> {
     if !config.llm.enabled {
         return Ok(Arc::new(glossa_app::ports::NoopTextEnhancer));
     }
-    let api_key = config.llm.resolve_api_key()?;
+    let api_key = match config.llm.resolve_api_key() {
+        Ok(key) => key,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "LLM enhancer is enabled but API key is unavailable; using no-op enhancer"
+            );
+            return Ok(Arc::new(glossa_app::ports::NoopTextEnhancer));
+        }
+    };
     Ok(Arc::new(HttpTextEnhancer::new(
         config.llm.base_url.clone(),
         config.llm.model.clone(),
