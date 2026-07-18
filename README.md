@@ -99,7 +99,7 @@ Then set your API key and start the daemon:
 | `glossa ctl shutdown` | Ask the daemon to shut down |
 | `glossa status` | Print the current daemon status |
 | `glossa doctor` | Run environment and configuration diagnostics |
-| `glossa update` | Run the local updater when installed |
+| `glossa update` | Check GitHub releases and install the latest update |
 
 ## Configuration
 
@@ -162,8 +162,29 @@ glossa-bin
         ├── native clipboard + paste
         ├── tray icon
         ├── loopback TCP IPC
-        └── doctor / autostart / updater stubs
+        └── doctor / autostart / GitHub-release updater
 ```
+
+## Updating
+
+Installed builds ship `update.ps1` next to `glossa.exe` under `%LOCALAPPDATA%\glossa`.
+
+- **Tray:** right-click the tray icon → **Update…**
+- **CLI:** `glossa update`
+
+The bootstrapper downloads the versioned `glossa-update.ps1` and `sha256sums.txt` from the latest [GitHub release](https://github.com/Glaicer/Glossa-win/releases), verifies the checksum, then installs `glossa-windows-x86_64.zip` (binary, assets, `VERSION`) and restarts the daemon.
+
+To package a release from a local build:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File build-release-zip.ps1 -Version 0.9.0
+```
+
+Upload the three files under `target\release\github\<version>\` to a GitHub release:
+
+- `glossa-windows-x86_64.zip`
+- `glossa-update.ps1`
+- `sha256sums.txt`
 
 See [AGENTS.md](AGENTS.md) for the full agent-oriented architecture notes.
 
