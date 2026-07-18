@@ -20,7 +20,18 @@ New-Item -ItemType Directory -Force -Path $AssetsTray, $AssetsSounds, $AppRoam |
 Copy-Item $ReleaseExe (Join-Path $AppLocal "glossa.exe") -Force
 Copy-Item (Join-Path $RepoRoot "contrib\assets\tray\*") $AssetsTray -Force
 Copy-Item (Join-Path $RepoRoot "contrib\assets\sounds\*") $AssetsSounds -Force
-Set-Content -Path (Join-Path $AppLocal "VERSION") -Value "1.4.0" -NoNewline
+Copy-Item (Join-Path $RepoRoot "contrib\windows\update.ps1") (Join-Path $AppLocal "update.ps1") -Force
+
+$version = "0.0.0"
+try {
+    $verText = (& $ReleaseExe --version 2>$null | Out-String).Trim()
+    if ($verText -match '(\d+\.\d+\.\d+\S*)$') {
+        $version = $Matches[1]
+    }
+} catch {
+    # keep default
+}
+Set-Content -Path (Join-Path $AppLocal "VERSION") -Value $version -NoNewline
 
 $ConfigPath = Join-Path $AppRoam "config.toml"
 if (-not (Test-Path $ConfigPath)) {
