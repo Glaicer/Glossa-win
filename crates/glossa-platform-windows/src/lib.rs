@@ -1,6 +1,7 @@
 //! Windows-specific adapters for IPC, clipboard, paste, hotkeys, tray, and diagnostics.
 
 pub mod clipboard;
+pub mod console;
 pub mod dialog;
 pub mod doctor;
 pub mod hotkey;

@@ -241,10 +241,16 @@ pub fn apply_setup(answers: &SetupAnswers) -> Result<SetupResult, AppError> {
 
 /// Spawns the installed daemon detached from the setup process.
 pub fn start_daemon_detached(exe_path: &Path, config_path: &Path) -> Result<(), AppError> {
+    use std::os::windows::process::CommandExt;
+
+    // CREATE_NO_WINDOW: do not allocate a console for the child (silent tray daemon).
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
     Command::new(exe_path)
         .arg("--config")
         .arg(config_path)
         .arg("daemon")
+        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map_err(|error| AppError::io("failed to start Glossa daemon", error))?;
     Ok(())

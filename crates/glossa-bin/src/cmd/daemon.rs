@@ -5,6 +5,7 @@ use tracing::{error, info};
 use glossa_app::{ports::CommandSource, ActorExit};
 use glossa_core::InputBackend;
 use glossa_platform_windows::{
+    console::free_orphan_console,
     dialog::show_fatal_error_dialog,
     hotkey::{run_escape_cancel_monitor, GlobalHotkeySource},
     ipc::IpcServer,
@@ -60,6 +61,10 @@ async fn run_inner(config_path: Option<std::path::PathBuf>) -> anyhow::Result<()
 }
 
 async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> {
+    // Close the black console window when launched outside a terminal (double-click,
+    // Startup shortcut, etc.). Shared terminals keep the console so logs still show.
+    free_orphan_console();
+
     let mut config = load_config(&config_path).await?;
     init_tracing(&config)?;
     config = prepare_runtime_config(config);
