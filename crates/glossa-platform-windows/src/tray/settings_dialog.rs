@@ -57,23 +57,24 @@ mod ui {
         },
         UI::{
             Controls::{
-                InitCommonControlsEx, BST_CHECKED, EM_SETCUEBANNER, ICC_STANDARD_CLASSES,
-                ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX,
+                InitCommonControlsEx, SetWindowTheme, BST_CHECKED, EM_SETCUEBANNER,
+                ICC_STANDARD_CLASSES, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX,
             },
             Input::KeyboardAndMouse::{EnableWindow, SetFocus},
             WindowsAndMessaging::{
                 AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DestroyWindow,
-                DispatchMessageW, GetClientRect, GetMessageW, GetSystemMetrics, GetWindowRect,
-                GetWindowTextLengthW, GetWindowTextW, LoadCursorW, MessageBoxW, PostQuitMessage,
-                RegisterClassExW, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow,
-                TranslateMessage, BM_GETCHECK, BM_SETCHECK, BN_CLICKED, BS_AUTOCHECKBOX,
-                BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CBS_DROPDOWNLIST, CB_ADDSTRING, CB_GETCURSEL,
-                CB_SETCURSEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, ES_AUTOHSCROLL, ES_PASSWORD,
+                DispatchMessageW, GetClientRect, GetMessageW, GetSystemMetrics, GetWindowLongPtrW,
+                GetWindowRect, GetWindowTextLengthW, GetWindowTextW, LoadCursorW, MessageBoxW,
+                PostQuitMessage, RegisterClassExW, SendMessageW, SetWindowPos, SetWindowTextW,
+                ShowWindow, TranslateMessage, BM_GETCHECK, BM_SETCHECK, BN_CLICKED,
+                BS_AUTOCHECKBOX, BS_AUTORADIOBUTTON, BS_CHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON,
+                BS_RADIOBUTTON, CBS_DROPDOWNLIST, CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL,
+                CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, ES_AUTOHSCROLL, ES_PASSWORD, GWL_STYLE,
                 IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, SWP_NOMOVE,
-                SWP_NOZORDER, SWP_NOSIZE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT,
-                WM_CTLCOLORSTATIC, WM_DESTROY, WM_ERASEBKGND, WM_SETFONT, WNDCLASSEXW, WS_CAPTION,
-                WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
-                WS_TABSTOP, WS_VISIBLE,
+                SWP_NOZORDER, SWP_NOSIZE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN,
+                WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY, WM_ERASEBKGND, WM_SETFONT,
+                WNDCLASSEXW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_CONTROLPARENT,
+                WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
             },
         },
     };
@@ -331,7 +332,14 @@ mod ui {
             }
             WM_CTLCOLORSTATIC => color_static(wparam as _, |s| (s.bg_brush, s.dark)),
             WM_CTLCOLOREDIT => color_edit(wparam as _, |s| (s.edit_brush, s.dark)),
-            // Leave buttons to the visual styles theme engine (do not handle WM_CTLCOLORBTN).
+            // Color checkbox/radio labels; leave push buttons to the visual styles engine.
+            WM_CTLCOLORBTN => {
+                if is_checkbox_or_radio(lparam as HWND) {
+                    color_static(wparam as _, |s| (s.bg_brush, s.dark))
+                } else {
+                    DefWindowProcW(hwnd, msg, wparam, lparam)
+                }
+            }
             WM_COMMAND => {
                 let id = loword(wparam as usize) as i32;
                 let code = hiword(wparam as usize) as u32;
@@ -429,6 +437,7 @@ mod ui {
             "Enable CLI",
             font,
             initial.enable_cli,
+            dark,
         );
         y += row_h + section_gap;
 
@@ -494,6 +503,7 @@ mod ui {
             "Append space",
             font,
             initial.append_space,
+            dark,
         );
         y += row_h + section_gap;
 
@@ -846,6 +856,14 @@ mod ui {
             }
             WM_CTLCOLORSTATIC => color_static_llm(wparam as _, |s| (s.bg_brush, s.dark)),
             WM_CTLCOLOREDIT => color_edit_llm(wparam as _, |s| (s.edit_brush, s.dark)),
+            // Color checkbox labels; leave push buttons to the visual styles engine.
+            WM_CTLCOLORBTN => {
+                if is_checkbox_or_radio(lparam as HWND) {
+                    color_static_llm(wparam as _, |s| (s.bg_brush, s.dark))
+                } else {
+                    DefWindowProcW(hwnd, msg, wparam, lparam)
+                }
+            }
             WM_COMMAND => {
                 let id = loword(wparam as usize) as i32;
                 let code = hiword(wparam as usize) as u32;
@@ -916,6 +934,7 @@ mod ui {
             "Enable LLM enhancer",
             font,
             initial.enabled,
+            dark,
         );
         y += row_h + 10;
 
@@ -1503,6 +1522,7 @@ mod ui {
         text: &str,
         font: HFONT,
         checked: bool,
+        dark: bool,
     ) -> HWND {
         let hwnd = CreateWindowExW(
             0,
@@ -1522,7 +1542,24 @@ mod ui {
         if checked {
             SendMessageW(hwnd, BM_SETCHECK, BST_CHECKED as WPARAM, 0);
         }
+        // ComCtl themed checkboxes ignore WM_CTLCOLORBTN text color. Drop the theme in
+        // dark mode so GDI coloring (via WM_CTLCOLORBTN) can paint light label text.
+        if dark {
+            let empty = to_wide("");
+            let _ = SetWindowTheme(hwnd, empty.as_ptr(), empty.as_ptr());
+        }
         hwnd
+    }
+
+    /// True for checkbox/radio button styles whose label we color via WM_CTLCOLORBTN.
+    unsafe fn is_checkbox_or_radio(hwnd: HWND) -> bool {
+        const BS_TYPEMASK: u32 = 0x0000_000F;
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let btn = style & BS_TYPEMASK;
+        btn == BS_CHECKBOX as u32
+            || btn == BS_AUTOCHECKBOX as u32
+            || btn == BS_RADIOBUTTON as u32
+            || btn == BS_AUTORADIOBUTTON as u32
     }
 
     unsafe fn create_button(
