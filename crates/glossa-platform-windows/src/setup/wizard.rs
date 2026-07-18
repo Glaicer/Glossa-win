@@ -90,7 +90,6 @@ mod ui {
     use std::{
         cell::RefCell,
         mem::size_of,
-        os::windows::ffi::OsStrExt,
         ptr,
         sync::atomic::{AtomicI32, Ordering},
     };
@@ -98,35 +97,40 @@ mod ui {
     use glossa_app::AppError;
     use glossa_core::{InputMode, ProviderKind, UiTheme};
     use windows_sys::Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{
-            CreateFontW, DeleteObject, GetStockObject, UpdateWindow, CLEARTYPE_QUALITY,
-            CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_GUI_FONT, FW_NORMAL, HFONT,
-            OUT_DEFAULT_PRECIS,
+            CreateSolidBrush, DeleteObject, FillRect, SetBkColor, SetBkMode, SetTextColor,
+            UpdateWindow, HBRUSH, HFONT, OPAQUE, TRANSPARENT,
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Controls::BST_CHECKED,
             Input::KeyboardAndMouse::{EnableWindow, SetFocus},
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
-                GetWindowTextLengthW, GetWindowTextW, LoadCursorW, PostQuitMessage, RegisterClassExW,
-                SendMessageW, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TranslateMessage,
-                BM_GETCHECK, BM_SETCHECK, BN_CLICKED, BS_AUTOCHECKBOX, BS_AUTORADIOBUTTON,
-                BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CBN_SELCHANGE, CBS_DROPDOWNLIST, CB_ADDSTRING,
-                CB_GETCURSEL, CB_SETCURSEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, EN_CHANGE,
-                ES_AUTOHSCROLL, ES_PASSWORD, GWLP_USERDATA, IDC_ARROW, MSG, SW_SHOW, WM_CLOSE,
-                WM_COMMAND, WM_CREATE, WM_DESTROY, WM_SETFONT, WNDCLASSEXW, WS_BORDER, WS_CAPTION,
-                WS_CHILD, WS_GROUP, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+                CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
+                GetMessageW, GetWindowTextLengthW, GetWindowTextW, LoadCursorW, PostQuitMessage,
+                RegisterClassExW, SendMessageW, SetWindowLongPtrW, SetWindowTextW, ShowWindow,
+                TranslateMessage, BM_GETCHECK, BM_SETCHECK, BN_CLICKED, BS_AUTOCHECKBOX,
+                BS_AUTORADIOBUTTON, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CBN_SELCHANGE, CBS_DROPDOWNLIST,
+                CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT,
+                EN_CHANGE, ES_AUTOHSCROLL, ES_PASSWORD, GWLP_USERDATA, IDC_ARROW, MSG, SW_SHOW,
+                WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY,
+                WM_ERASEBKGND, WM_SETFONT, WNDCLASSEXW, WS_CHILD, WS_EX_CLIENTEDGE, WS_GROUP,
+                WS_TABSTOP, WS_VISIBLE,
             },
         },
     };
 
     use crate::setup::install::{default_base_url, default_model, validate_answers, SetupAnswers};
+    use crate::win_style::{
+        activate_visual_styles, apply_titlebar_theme, center_window, create_body_font,
+        create_header_font, ensure_common_controls, fit_window_to_client, outer_size_for_client,
+        to_wide, LIGHT_BG, LIGHT_EDIT_BG, LIGHT_TEXT, WINDOW_EX_STYLE, WINDOW_STYLE,
+    };
 
     const CLASS_NAME: &str = "GlossaSetupWizard";
     const WIN_WIDTH: i32 = 520;
-    const WIN_HEIGHT: i32 = 560;
+    const WIN_HEIGHT: i32 = 620;
 
     const ID_PROVIDER: i32 = 1001;
     const ID_API_KEY: i32 = 1002;
@@ -151,6 +155,9 @@ mod ui {
 
     struct WizardState {
         font: HFONT,
+        header_font: HFONT,
+        bg_brush: HBRUSH,
+        edit_brush: HBRUSH,
         provider: HWND,
         api_key: HWND,
         base_url: HWND,
@@ -170,6 +177,9 @@ mod ui {
     }
 
     unsafe fn show_wizard_dialog_impl() -> Result<Option<SetupAnswers>, AppError> {
+        let _visual_styles = activate_visual_styles();
+        ensure_common_controls();
+
         let class_atom = {
             let unique = NEXT_CLASS_ID.fetch_add(1, Ordering::Relaxed);
             let class_name = format!("{CLASS_NAME}{unique}");
@@ -185,9 +195,7 @@ mod ui {
                 hInstance: hinstance,
                 hIcon: ptr::null_mut(),
                 hCursor: LoadCursorW(ptr::null_mut(), IDC_ARROW),
-                // COLOR_WINDOW+1 is the idiomatic brush constant for dialog backgrounds.
-                hbrBackground: (windows_sys::Win32::Graphics::Gdi::COLOR_WINDOW as isize + 1)
-                    as windows_sys::Win32::Graphics::Gdi::HBRUSH,
+                hbrBackground: ptr::null_mut(),
                 lpszMenuName: ptr::null(),
                 lpszClassName: class_wide.as_ptr(),
                 hIconSm: ptr::null_mut(),
@@ -204,15 +212,16 @@ mod ui {
 
         let (class_wide, hinstance) = class_atom;
         let title = to_wide("Glossa Setup");
+        let (outer_w, outer_h) = outer_size_for_client(WIN_WIDTH, WIN_HEIGHT);
         let hwnd = CreateWindowExW(
-            0,
+            WINDOW_EX_STYLE,
             class_wide.as_ptr(),
             title.as_ptr(),
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+            WINDOW_STYLE | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            WIN_WIDTH,
-            WIN_HEIGHT,
+            outer_w,
+            outer_h,
             ptr::null_mut(),
             ptr::null_mut(),
             hinstance,
@@ -223,6 +232,8 @@ mod ui {
             return Err(AppError::message("failed to create Glossa setup window"));
         }
 
+        apply_titlebar_theme(hwnd, false);
+        center_window(hwnd);
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
 
@@ -263,6 +274,53 @@ mod ui {
                 }
                 0
             }
+            WM_ERASEBKGND => {
+                let brush = WIZARD_STATE.with(|cell| {
+                    cell.borrow()
+                        .as_ref()
+                        .map(|s| s.bg_brush)
+                        .filter(|b| !b.is_null())
+                });
+                if let Some(brush) = brush {
+                    let mut rect = RECT {
+                        left: 0,
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                    };
+                    if GetClientRect(hwnd, &mut rect) != 0 {
+                        FillRect(wparam as _, &rect, brush);
+                        return 1;
+                    }
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            }
+            WM_CTLCOLORSTATIC => {
+                let hdc = wparam as _;
+                let brush = WIZARD_STATE.with(|cell| {
+                    cell.borrow()
+                        .as_ref()
+                        .map(|s| s.bg_brush)
+                        .unwrap_or(ptr::null_mut())
+                });
+                SetTextColor(hdc, LIGHT_TEXT);
+                SetBkMode(hdc, TRANSPARENT as i32);
+                SetBkColor(hdc, LIGHT_BG);
+                brush as LRESULT
+            }
+            WM_CTLCOLOREDIT => {
+                let hdc = wparam as _;
+                let brush = WIZARD_STATE.with(|cell| {
+                    cell.borrow()
+                        .as_ref()
+                        .map(|s| s.edit_brush)
+                        .unwrap_or(ptr::null_mut())
+                });
+                SetTextColor(hdc, LIGHT_TEXT);
+                SetBkColor(hdc, LIGHT_EDIT_BG);
+                SetBkMode(hdc, OPAQUE as i32);
+                brush as LRESULT
+            }
             WM_COMMAND => {
                 let id = loword(wparam as usize) as i32;
                 let code = hiword(wparam as usize) as u32;
@@ -285,6 +343,18 @@ mod ui {
                             DeleteObject(state.font);
                             state.font = ptr::null_mut();
                         }
+                        if !state.header_font.is_null() {
+                            DeleteObject(state.header_font);
+                            state.header_font = ptr::null_mut();
+                        }
+                        if !state.bg_brush.is_null() {
+                            DeleteObject(state.bg_brush);
+                            state.bg_brush = ptr::null_mut();
+                        }
+                        if !state.edit_brush.is_null() {
+                            DeleteObject(state.edit_brush);
+                            state.edit_brush = ptr::null_mut();
+                        }
                     }
                 });
                 PostQuitMessage(0);
@@ -295,73 +365,99 @@ mod ui {
     }
 
     unsafe fn on_create(hwnd: HWND) -> Result<(), AppError> {
-        let font = CreateFontW(
-            -16,
-            0,
-            0,
-            0,
-            FW_NORMAL as i32,
-            0,
-            0,
-            0,
-            DEFAULT_CHARSET as u32,
-            OUT_DEFAULT_PRECIS as u32,
-            CLIP_DEFAULT_PRECIS as u32,
-            CLEARTYPE_QUALITY as u32,
-            0,
-            to_wide("Segoe UI").as_ptr(),
+        let font = create_body_font();
+        let header_font = create_header_font();
+        let bg_brush = CreateSolidBrush(LIGHT_BG);
+        let edit_brush = CreateSolidBrush(LIGHT_EDIT_BG);
+
+        let margin = 20i32;
+        let label_w = 100i32;
+        let field_x = margin + label_w + 12;
+        let field_w = WIN_WIDTH - field_x - margin;
+        let row_h = 32i32;
+        let field_h = 26i32;
+        let section_gap = 16i32;
+        let mut y = margin;
+
+        create_section_header(
+            hwnd,
+            margin,
+            y,
+            WIN_WIDTH - margin * 2,
+            "Welcome",
+            2000,
+            header_font,
         );
-        let font = if font.is_null() {
-            GetStockObject(DEFAULT_GUI_FONT) as HFONT
-        } else {
-            font
-        };
+        y += 26;
+        create_static(
+            hwnd,
+            margin,
+            y,
+            WIN_WIDTH - margin * 2,
+            36,
+            "Configure speech-to-text and install tray assets for Glossa.",
+            2001,
+            font,
+        );
+        y += 44;
 
-        let mut y = 16i32;
-        let label_w = 110i32;
-        let field_x = 130i32;
-        let field_w = 350i32;
-        let row_h = 28i32;
-        let gap = 10i32;
+        create_section_header(
+            hwnd,
+            margin,
+            y,
+            WIN_WIDTH - margin * 2,
+            "Provider",
+            2002,
+            header_font,
+        );
+        y += 26;
 
-        create_static(hwnd, 16, y, 480, 40, "Welcome to Glossa. Configure speech-to-text and install tray assets.", 2000, font);
-        y += 48;
-
-        create_static(hwnd, 16, y + 4, label_w, 20, "Provider", 2001, font);
-        let provider = create_combo(hwnd, field_x, y, field_w, 200, ID_PROVIDER, font);
+        create_static(hwnd, margin, y + 4, label_w, 20, "Service", 2003, font);
+        let provider = create_combo(hwnd, field_x, y, field_w, 220, ID_PROVIDER, font);
         for label in ["Groq (recommended)", "OpenAI", "OpenAI-compatible"] {
             let wide = to_wide(label);
             SendMessageW(provider, CB_ADDSTRING, 0, wide.as_ptr() as LPARAM);
         }
         SendMessageW(provider, CB_SETCURSEL, 0, 0);
-        y += row_h + gap;
+        y += row_h + 6;
 
-        create_static(hwnd, 16, y + 4, label_w, 20, "API key", 2002, font);
-        let api_key = create_edit(hwnd, field_x, y, field_w, 24, ID_API_KEY, font, true);
-        y += row_h + gap;
+        create_static(hwnd, margin, y + 4, label_w, 20, "API key", 2004, font);
+        let api_key = create_edit(hwnd, field_x, y, field_w, field_h, ID_API_KEY, font, true);
+        y += row_h + 6;
 
-        create_static(hwnd, 16, y + 4, label_w, 20, "Base URL", ID_LBL_BASE, font);
-        let base_url = create_edit(hwnd, field_x, y, field_w, 24, ID_BASE_URL, font, false);
+        create_static(hwnd, margin, y + 4, label_w, 20, "Base URL", ID_LBL_BASE, font);
+        let base_url = create_edit(hwnd, field_x, y, field_w, field_h, ID_BASE_URL, font, false);
         set_text(base_url, default_base_url(ProviderKind::Groq));
-        y += row_h + gap;
+        y += row_h + 6;
 
-        create_static(hwnd, 16, y + 4, label_w, 20, "Model", 2003, font);
-        let model = create_edit(hwnd, field_x, y, field_w, 24, ID_MODEL, font, false);
+        create_static(hwnd, margin, y + 4, label_w, 20, "Model", 2005, font);
+        let model = create_edit(hwnd, field_x, y, field_w, field_h, ID_MODEL, font, false);
         set_text(model, default_model(ProviderKind::Groq));
-        y += row_h + gap;
+        y += row_h + section_gap;
 
-        create_static(hwnd, 16, y + 4, label_w, 20, "Hotkey", 2004, font);
-        let shortcut = create_edit(hwnd, field_x, y, field_w, 24, ID_SHORTCUT, font, false);
+        create_section_header(
+            hwnd,
+            margin,
+            y,
+            WIN_WIDTH - margin * 2,
+            "Input",
+            2006,
+            header_font,
+        );
+        y += 26;
+
+        create_static(hwnd, margin, y + 4, label_w, 20, "Hotkey", 2007, font);
+        let shortcut = create_edit(hwnd, field_x, y, field_w, field_h, ID_SHORTCUT, font, false);
         set_text(shortcut, "Ctrl+Alt+Space");
-        y += row_h + gap + 4;
+        y += row_h + 6;
 
-        create_static(hwnd, 16, y, label_w, 20, "Mode", 2005, font);
+        create_static(hwnd, margin, y + 4, label_w, 20, "Mode", 2008, font);
         let mode_ptt = create_radio(
             hwnd,
             field_x,
-            y,
-            160,
-            22,
+            y + 2,
+            150,
+            24,
             ID_MODE_PTT,
             "Push-to-talk",
             font,
@@ -370,25 +466,36 @@ mod ui {
         );
         let _mode_toggle = create_radio(
             hwnd,
-            field_x + 170,
-            y,
+            field_x + 160,
+            y + 2,
             120,
-            22,
+            24,
             ID_MODE_TOGGLE,
             "Toggle",
             font,
             false,
             false,
         );
-        y += row_h + gap;
+        y += row_h + section_gap;
 
-        create_static(hwnd, 16, y, label_w, 20, "Tray theme", 2006, font);
+        create_section_header(
+            hwnd,
+            margin,
+            y,
+            WIN_WIDTH - margin * 2,
+            "Appearance",
+            2009,
+            header_font,
+        );
+        y += 26;
+
+        create_static(hwnd, margin, y + 4, label_w, 20, "Tray theme", 2010, font);
         let theme_dark = create_radio(
             hwnd,
             field_x,
-            y,
+            y + 2,
             100,
-            22,
+            24,
             ID_THEME_DARK,
             "Dark",
             font,
@@ -398,23 +505,34 @@ mod ui {
         let _theme_light = create_radio(
             hwnd,
             field_x + 110,
-            y,
+            y + 2,
             100,
-            22,
+            24,
             ID_THEME_LIGHT,
             "Light",
             font,
             false,
             false,
         );
-        y += row_h + gap + 6;
+        y += row_h + section_gap;
+
+        create_section_header(
+            hwnd,
+            margin,
+            y,
+            WIN_WIDTH - margin * 2,
+            "Startup",
+            2011,
+            header_font,
+        );
+        y += 26;
 
         let autostart = create_checkbox(
             hwnd,
-            16,
+            margin,
             y,
-            360,
-            22,
+            WIN_WIDTH - margin * 2,
+            24,
             ID_AUTOSTART,
             "Start Glossa when I log in to Windows",
             font,
@@ -423,24 +541,55 @@ mod ui {
         y += row_h + 4;
         let start_now = create_checkbox(
             hwnd,
-            16,
+            margin,
             y,
-            360,
-            22,
+            WIN_WIDTH - margin * 2,
+            24,
             ID_START_NOW,
             "Start Glossa now after setup",
             font,
             true,
         );
-        y += row_h + 24;
+        y += row_h + 18;
 
-        create_button(hwnd, 250, y, 100, 30, ID_CANCEL, "Cancel", font, false);
-        create_button(hwnd, 370, y, 110, 30, ID_INSTALL, "Install", font, true);
+        create_separator(hwnd, margin, y, WIN_WIDTH - margin * 2, 2012);
+        y += 14;
+
+        let btn_w = 110i32;
+        let btn_h = 32i32;
+        create_button(
+            hwnd,
+            WIN_WIDTH - margin - btn_w * 2 - 10,
+            y,
+            btn_w,
+            btn_h,
+            ID_CANCEL,
+            "Cancel",
+            font,
+            false,
+        );
+        create_button(
+            hwnd,
+            WIN_WIDTH - margin - btn_w,
+            y,
+            btn_w,
+            btn_h,
+            ID_INSTALL,
+            "Install",
+            font,
+            true,
+        );
+
+        let content_bottom = y + btn_h + margin;
+        fit_window_to_client(hwnd, WIN_WIDTH, content_bottom);
 
         enable_window(base_url, false);
 
         let state = WizardState {
             font,
+            header_font,
+            bg_brush,
+            edit_brush,
             provider,
             api_key,
             base_url,
@@ -474,24 +623,22 @@ mod ui {
                     }
                 });
             }
-            ID_INSTALL if code == BN_CLICKED || code == 0 => {
-                match collect_answers() {
-                    Ok(answers) => {
-                        if let Err(error) = validate_answers(&answers) {
-                            show_error(&error.to_string());
-                            return;
-                        }
-                        WIZARD_STATE.with(|cell| {
-                            if let Some(state) = cell.borrow_mut().as_mut() {
-                                state.result = Some(answers);
-                                state.cancelled = false;
-                            }
-                        });
-                        DestroyWindow(hwnd);
+            ID_INSTALL if code == BN_CLICKED || code == 0 => match collect_answers() {
+                Ok(answers) => {
+                    if let Err(error) = validate_answers(&answers) {
+                        show_error(&error.to_string());
+                        return;
                     }
-                    Err(error) => show_error(&error.to_string()),
+                    WIZARD_STATE.with(|cell| {
+                        if let Some(state) = cell.borrow_mut().as_mut() {
+                            state.result = Some(answers);
+                            state.cancelled = false;
+                        }
+                    });
+                    DestroyWindow(hwnd);
                 }
-            }
+                Err(error) => show_error(&error.to_string()),
+            },
             ID_CANCEL if code == BN_CLICKED || code == 0 => {
                 WIZARD_STATE.with(|cell| {
                     if let Some(state) = cell.borrow_mut().as_mut() {
@@ -548,6 +695,51 @@ mod ui {
         }
     }
 
+    unsafe fn create_section_header(
+        parent: HWND,
+        x: i32,
+        y: i32,
+        w: i32,
+        text: &str,
+        id: i32,
+        font: HFONT,
+    ) -> HWND {
+        let hwnd = CreateWindowExW(
+            0,
+            to_wide("STATIC").as_ptr(),
+            to_wide(text).as_ptr(),
+            WS_CHILD | WS_VISIBLE,
+            x,
+            y,
+            w,
+            22,
+            parent,
+            id as _,
+            GetModuleHandleW(ptr::null()),
+            ptr::null(),
+        );
+        SendMessageW(hwnd, WM_SETFONT, font as WPARAM, 1);
+        hwnd
+    }
+
+    unsafe fn create_separator(parent: HWND, x: i32, y: i32, w: i32, id: i32) -> HWND {
+        const SS_ETCHEDHORZ: u32 = 0x10;
+        CreateWindowExW(
+            0,
+            to_wide("STATIC").as_ptr(),
+            to_wide("").as_ptr(),
+            WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
+            x,
+            y,
+            w,
+            2,
+            parent,
+            id as _,
+            GetModuleHandleW(ptr::null()),
+            ptr::null(),
+        )
+    }
+
     unsafe fn create_static(
         parent: HWND,
         x: i32,
@@ -586,12 +778,12 @@ mod ui {
         font: HFONT,
         password: bool,
     ) -> HWND {
-        let mut style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL as u32;
+        let mut style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL as u32;
         if password {
             style |= ES_PASSWORD as u32;
         }
         let hwnd = CreateWindowExW(
-            0,
+            WS_EX_CLIENTEDGE,
             to_wide("EDIT").as_ptr(),
             to_wide("").as_ptr(),
             style,
@@ -777,13 +969,6 @@ mod ui {
                     | windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONERROR,
             );
         }
-    }
-
-    fn to_wide(value: &str) -> Vec<u16> {
-        std::ffi::OsStr::new(value)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
     }
 
     fn loword(value: usize) -> u16 {

@@ -100,16 +100,15 @@ Set your API key in the user environment, or put a literal key in `config.toml`:
 
 ## Configuration
 
-Most day-to-day toggles are available from the tray menu:
+Most day-to-day controls are available from the tray menu:
 
-- Toggle recording
-- AI enhancer
-- Append space
-- Mode: Toggle / Push-to-talk
-- Open config…
-- Quit
+- Change shortcut…
+- Settings (full configuration dialog)
+- Update…
+- AI enhancer (quick toggle)
+- Exit
 
-Edit `%APPDATA%\glossa\config.toml` for provider keys, models, and paths. Use [contrib/examples/config.toml](contrib/examples/config.toml) as the reference.
+The Settings dialog covers input backend/mode, CLI control, STT provider, paste, theme, and the LLM enhancer. Edit `%APPDATA%\glossa\config.toml` directly for advanced options. Use [contrib/examples/config.toml](contrib/examples/config.toml) as the reference.
 
 ### Hotkey
 

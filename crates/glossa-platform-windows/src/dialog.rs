@@ -95,28 +95,39 @@ fn prompt_text_dialog_windows(
     label: &str,
     initial: &str,
 ) -> Result<Option<String>, DialogError> {
-    use std::{cell::RefCell, mem::size_of, os::windows::ffi::OsStrExt, ptr, sync::Once};
+    use std::{cell::RefCell, mem::size_of, ptr, sync::Once};
 
     use windows_sys::Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
-        Graphics::Gdi::{GetStockObject, DEFAULT_GUI_FONT},
+        Graphics::Gdi::{
+            CreateSolidBrush, DeleteObject, FillRect, SetBkColor, SetBkMode, SetTextColor, HBRUSH,
+            HFONT, OPAQUE, TRANSPARENT,
+        },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Input::KeyboardAndMouse::SetFocus,
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
-                GetSystemMetrics, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-                LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassExW, SendMessageW,
-                SetWindowPos, SetWindowTextW, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
-                CW_USEDEFAULT, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SM_CXSCREEN, SM_CYSCREEN,
-                SW_SHOW, SWP_NOSIZE, SWP_NOZORDER, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_SETFONT,
-                WNDCLASSEXW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_OVERLAPPED, WS_SYSMENU,
-                WS_TABSTOP, WS_VISIBLE,
+                CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
+                GetMessageW, GetWindowTextLengthW, GetWindowTextW, LoadCursorW, MessageBoxW,
+                PostQuitMessage, RegisterClassExW, SendMessageW, SetWindowTextW, ShowWindow,
+                TranslateMessage, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CS_HREDRAW, CS_VREDRAW,
+                CW_USEDEFAULT, ES_AUTOHSCROLL, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SW_SHOW,
+                WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY,
+                WM_ERASEBKGND, WM_SETFONT, WNDCLASSEXW, WS_CHILD, WS_EX_CLIENTEDGE, WS_TABSTOP,
+                WS_VISIBLE,
             },
         },
     };
 
+    use crate::win_style::{
+        activate_visual_styles, apply_titlebar_theme, center_window, create_body_font,
+        create_header_font, ensure_common_controls, fit_window_to_client, outer_size_for_client,
+        to_wide, LIGHT_BG, LIGHT_EDIT_BG, LIGHT_TEXT, WINDOW_EX_STYLE, WINDOW_STYLE,
+    };
+
     const CLASS_NAME: &str = "GlossaPromptDialog";
+    const CLIENT_W: i32 = 420;
+    const CLIENT_H: i32 = 180;
     const ID_EDIT: isize = 1001;
     const ID_OK: i32 = 1;
     const ID_CANCEL: i32 = 2;
@@ -126,6 +137,10 @@ fn prompt_text_dialog_windows(
     }
 
     struct PromptState {
+        font: HFONT,
+        header_font: HFONT,
+        bg_brush: HBRUSH,
+        edit_brush: HBRUSH,
         edit: HWND,
         result: Option<String>,
         cancelled: bool,
@@ -134,13 +149,6 @@ fn prompt_text_dialog_windows(
     struct PromptInit {
         label: String,
         initial: String,
-    }
-
-    fn to_wide(value: &str) -> Vec<u16> {
-        std::ffi::OsStr::new(value)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
     }
 
     static REGISTER: Once = Once::new();
@@ -187,6 +195,53 @@ fn prompt_text_dialog_windows(
                 }
                 0
             }
+            WM_ERASEBKGND => {
+                let brush = PROMPT_STATE.with(|cell| {
+                    cell.borrow()
+                        .as_ref()
+                        .map(|s| s.bg_brush)
+                        .filter(|b| !b.is_null())
+                });
+                if let Some(brush) = brush {
+                    let mut rect = RECT {
+                        left: 0,
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                    };
+                    if GetClientRect(hwnd, &mut rect) != 0 {
+                        FillRect(wparam as _, &rect, brush);
+                        return 1;
+                    }
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            }
+            WM_CTLCOLORSTATIC => {
+                let hdc = wparam as _;
+                let brush = PROMPT_STATE.with(|cell| {
+                    cell.borrow()
+                        .as_ref()
+                        .map(|s| s.bg_brush)
+                        .unwrap_or(ptr::null_mut())
+                });
+                SetTextColor(hdc, LIGHT_TEXT);
+                SetBkMode(hdc, TRANSPARENT as i32);
+                SetBkColor(hdc, LIGHT_BG);
+                brush as LRESULT
+            }
+            WM_CTLCOLOREDIT => {
+                let hdc = wparam as _;
+                let brush = PROMPT_STATE.with(|cell| {
+                    cell.borrow()
+                        .as_ref()
+                        .map(|s| s.edit_brush)
+                        .unwrap_or(ptr::null_mut())
+                });
+                SetTextColor(hdc, LIGHT_TEXT);
+                SetBkColor(hdc, LIGHT_EDIT_BG);
+                SetBkMode(hdc, OPAQUE as i32);
+                brush as LRESULT
+            }
             WM_COMMAND => {
                 let id = (wparam & 0xFFFF) as i32;
                 match id {
@@ -213,6 +268,26 @@ fn prompt_text_dialog_windows(
                 0
             }
             WM_DESTROY => {
+                PROMPT_STATE.with(|cell| {
+                    if let Some(state) = cell.borrow_mut().as_mut() {
+                        if !state.font.is_null() {
+                            DeleteObject(state.font);
+                            state.font = ptr::null_mut();
+                        }
+                        if !state.header_font.is_null() {
+                            DeleteObject(state.header_font);
+                            state.header_font = ptr::null_mut();
+                        }
+                        if !state.bg_brush.is_null() {
+                            DeleteObject(state.bg_brush);
+                            state.bg_brush = ptr::null_mut();
+                        }
+                        if !state.edit_brush.is_null() {
+                            DeleteObject(state.edit_brush);
+                            state.edit_brush = ptr::null_mut();
+                        }
+                    }
+                });
                 PostQuitMessage(0);
                 0
             }
@@ -222,21 +297,25 @@ fn prompt_text_dialog_windows(
 
     unsafe fn build_prompt_ui(hwnd: HWND, init: &PromptInit) -> Result<(), String> {
         let hinstance = GetModuleHandleW(ptr::null());
-        let font = GetStockObject(DEFAULT_GUI_FONT);
+        let font = create_body_font();
+        let header_font = create_header_font();
+        let bg_brush = CreateSolidBrush(LIGHT_BG);
+        let edit_brush = CreateSolidBrush(LIGHT_EDIT_BG);
 
-        let static_class = to_wide("STATIC");
-        let edit_class = to_wide("EDIT");
-        let button_class = to_wide("BUTTON");
+        let margin = 20i32;
+        let field_w = CLIENT_W - margin * 2;
+        let mut y = margin;
 
+        // Title-style label
         let label = CreateWindowExW(
             0,
-            static_class.as_ptr(),
+            to_wide("STATIC").as_ptr(),
             to_wide(&init.label).as_ptr(),
             WS_CHILD | WS_VISIBLE,
-            16,
-            16,
-            360,
-            20,
+            margin,
+            y,
+            field_w,
+            22,
             hwnd,
             ptr::null_mut(),
             hinstance,
@@ -245,17 +324,18 @@ fn prompt_text_dialog_windows(
         if label.is_null() {
             return Err("failed to create label".into());
         }
-        SendMessageW(label, WM_SETFONT, font as usize, 1);
+        SendMessageW(label, WM_SETFONT, header_font as usize, 1);
+        y += 30;
 
         let edit = CreateWindowExW(
-            0,
-            edit_class.as_ptr(),
+            WS_EX_CLIENTEDGE,
+            to_wide("EDIT").as_ptr(),
             to_wide(&init.initial).as_ptr(),
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER,
-            16,
-            44,
-            360,
-            26,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL as u32,
+            margin,
+            y,
+            field_w,
+            28,
             hwnd,
             ID_EDIT as _,
             hinstance,
@@ -265,16 +345,37 @@ fn prompt_text_dialog_windows(
             return Err("failed to create edit control".into());
         }
         SendMessageW(edit, WM_SETFONT, font as usize, 1);
+        y += 40;
 
+        // Separator (SS_ETCHEDHORZ)
+        const SS_ETCHEDHORZ: u32 = 0x10;
+        let _ = CreateWindowExW(
+            0,
+            to_wide("STATIC").as_ptr(),
+            to_wide("").as_ptr(),
+            WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
+            margin,
+            y,
+            field_w,
+            2,
+            hwnd,
+            ptr::null_mut(),
+            hinstance,
+            ptr::null(),
+        );
+        y += 14;
+
+        let btn_w = 96i32;
+        let btn_h = 32i32;
         let ok = CreateWindowExW(
             0,
-            button_class.as_ptr(),
+            to_wide("BUTTON").as_ptr(),
             to_wide("OK").as_ptr(),
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-            196,
-            86,
-            84,
-            28,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON as u32,
+            CLIENT_W - margin - btn_w,
+            y,
+            btn_w,
+            btn_h,
             hwnd,
             ID_OK as _,
             hinstance,
@@ -282,13 +383,13 @@ fn prompt_text_dialog_windows(
         );
         let cancel = CreateWindowExW(
             0,
-            button_class.as_ptr(),
+            to_wide("BUTTON").as_ptr(),
             to_wide("Cancel").as_ptr(),
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-            292,
-            86,
-            84,
-            28,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON as u32,
+            CLIENT_W - margin - btn_w * 2 - 10,
+            y,
+            btn_w,
+            btn_h,
             hwnd,
             ID_CANCEL as _,
             hinstance,
@@ -300,8 +401,15 @@ fn prompt_text_dialog_windows(
         SendMessageW(ok, WM_SETFONT, font as usize, 1);
         SendMessageW(cancel, WM_SETFONT, font as usize, 1);
 
+        let content_bottom = y + btn_h + margin;
+        fit_window_to_client(hwnd, CLIENT_W, content_bottom);
+
         PROMPT_STATE.with(|cell| {
             *cell.borrow_mut() = Some(PromptState {
+                font,
+                header_font,
+                bg_brush,
+                edit_brush,
                 edit,
                 result: None,
                 cancelled: true,
@@ -325,6 +433,9 @@ fn prompt_text_dialog_windows(
         String::from_utf16_lossy(&buf[..read as usize])
     }
 
+    let _visual_styles = unsafe { activate_visual_styles() };
+    unsafe { ensure_common_controls() };
+
     let init = PromptInit {
         label: label.to_owned(),
         initial: initial.to_owned(),
@@ -332,18 +443,19 @@ fn prompt_text_dialog_windows(
     let class_name = to_wide(CLASS_NAME);
     let title_wide = to_wide(title);
     let hinstance = unsafe { GetModuleHandleW(ptr::null()) };
+    let (outer_w, outer_h) = unsafe { outer_size_for_client(CLIENT_W, CLIENT_H) };
 
     // SAFETY: ownerless modal dialog on the calling thread.
     let hwnd = unsafe {
         CreateWindowExW(
-            0,
+            WINDOW_EX_STYLE,
             class_name.as_ptr(),
             title_wide.as_ptr(),
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+            WINDOW_STYLE | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            410,
-            160,
+            outer_w,
+            outer_h,
             ptr::null_mut(),
             ptr::null_mut(),
             hinstance,
@@ -357,21 +469,8 @@ fn prompt_text_dialog_windows(
     }
 
     unsafe {
-        let mut rect = RECT {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        };
-        if GetWindowRect(hwnd, &mut rect) != 0 {
-            let width = rect.right - rect.left;
-            let height = rect.bottom - rect.top;
-            let screen_w = GetSystemMetrics(SM_CXSCREEN);
-            let screen_h = GetSystemMetrics(SM_CYSCREEN);
-            let x = (screen_w - width) / 2;
-            let y = (screen_h - height) / 2;
-            let _ = SetWindowPos(hwnd, ptr::null_mut(), x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
-        }
+        apply_titlebar_theme(hwnd, false);
+        center_window(hwnd);
         ShowWindow(hwnd, SW_SHOW);
     }
 

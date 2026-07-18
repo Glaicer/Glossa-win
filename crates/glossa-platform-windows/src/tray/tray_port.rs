@@ -1,7 +1,6 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Mutex,
@@ -32,6 +31,7 @@ use crate::updater::{check_for_update, install_update, UpdaterStatus};
 use crate::winmsg::pump_thread_messages;
 
 use super::settings::{write_settings_to_config, SettingsValues};
+use super::settings_dialog::show_settings_dialog;
 
 const TRAY_THREAD_NAME: &str = "glossa-tray";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -190,18 +190,12 @@ struct TrayRuntime {
     processing_icon: Icon,
     /// Context menu shown on left/right click (kept alive for popup).
     context_menu: Menu,
-    /// Settings submenu opened from the context menu (kept alive for popup).
-    settings_menu: Menu,
     change_shortcut_item: MenuItem,
     settings_item: MenuItem,
     update_item: MenuItem,
     enhancer_item: CheckMenuItem,
     version_item: MenuItem,
     exit_item: MenuItem,
-    mode_toggle_item: CheckMenuItem,
-    mode_ptt_item: CheckMenuItem,
-    append_space_item: CheckMenuItem,
-    open_config_item: MenuItem,
     settings: SettingsValues,
     config_path: PathBuf,
     app_command_tx: std::sync::Arc<Mutex<Option<UnboundedSender<AppCommand>>>>,
@@ -211,7 +205,7 @@ struct TrayRuntime {
 fn run_tray_thread(
     ui: UiConfig,
     shortcut: String,
-    input_mode: InputMode,
+    _input_mode: InputMode,
     settings: SettingsValues,
     config_path: PathBuf,
     app_command_tx: std::sync::Arc<Mutex<Option<UnboundedSender<AppCommand>>>>,
@@ -271,35 +265,6 @@ fn run_tray_thread(
         return;
     }
 
-    // --- Settings submenu (opened from context menu → Settings) ---
-    let mode_toggle_item = CheckMenuItem::new(
-        "Mode: Toggle",
-        true,
-        input_mode == InputMode::Toggle,
-        None,
-    );
-    let mode_ptt_item = CheckMenuItem::new(
-        "Mode: Push-to-talk",
-        true,
-        input_mode == InputMode::PushToTalk,
-        None,
-    );
-    let append_space_item = CheckMenuItem::new("Append space", true, settings.append_space, None);
-    let open_config_item = MenuItem::new("Open config…", true, None);
-
-    let settings_menu = Menu::new();
-    if let Err(error) = settings_menu.append_items(&[
-        &mode_toggle_item,
-        &mode_ptt_item,
-        &PredefinedMenuItem::separator(),
-        &append_space_item,
-        &open_config_item,
-    ]) {
-        warn!(error = %error, "failed to build tray settings menu");
-        destroy_popup_owner_window(popup_hwnd);
-        return;
-    }
-
     // No built-in menu: we show the context menu ourselves on left and right click.
     let tray = match TrayIconBuilder::new()
         .with_tooltip("Glossa")
@@ -323,17 +288,12 @@ fn run_tray_thread(
         recording_icon,
         processing_icon,
         context_menu,
-        settings_menu,
         change_shortcut_item,
         settings_item,
         update_item,
         enhancer_item,
         version_item,
         exit_item,
-        mode_toggle_item,
-        mode_ptt_item,
-        append_space_item,
-        open_config_item,
         settings,
         config_path,
         app_command_tx,
@@ -384,11 +344,6 @@ impl TrayRuntime {
             .show_context_menu_for_hwnd(self.popup_hwnd, None);
     }
 
-    fn show_settings_menu(&self) {
-        self.settings_menu
-            .show_context_menu_for_hwnd(self.popup_hwnd, None);
-    }
-
     fn handle_command(&mut self, command: TrayCommand) {
         match command {
             TrayCommand::SetState(state) => {
@@ -424,7 +379,7 @@ impl TrayRuntime {
             return false;
         }
         if id == self.settings_item.id() {
-            self.show_settings_menu();
+            self.handle_settings();
             return false;
         }
         if id == self.update_item.id() {
@@ -443,34 +398,30 @@ impl TrayRuntime {
             });
             return true;
         }
-        if id == self.mode_toggle_item.id() {
-            self.settings.input_mode = InputMode::Toggle;
-            self.mode_toggle_item.set_checked(true);
-            self.mode_ptt_item.set_checked(false);
-            self.persist_settings();
-            self.request_restart();
-            return false;
-        }
-        if id == self.mode_ptt_item.id() {
-            self.settings.input_mode = InputMode::PushToTalk;
-            self.mode_toggle_item.set_checked(false);
-            self.mode_ptt_item.set_checked(true);
-            self.persist_settings();
-            self.request_restart();
-            return false;
-        }
-        if id == self.append_space_item.id() {
-            self.settings.append_space = self.append_space_item.is_checked();
-            self.persist_settings();
-            self.request_restart();
-            return false;
-        }
-        if id == self.open_config_item.id() {
-            open_config(&self.config_path);
-            return false;
-        }
         let _ = self.version_item.id();
         false
+    }
+
+    fn handle_settings(&mut self) {
+        match show_settings_dialog(&self.settings) {
+            Ok(Some(updated)) => {
+                self.settings = updated;
+                self.enhancer_item.set_checked(self.settings.llm_enabled);
+                self.persist_settings();
+                self.request_restart();
+                let _ = show_info_dialog(
+                    "Glossa",
+                    "Settings saved.\nGlossa is restarting to apply them.",
+                );
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let _ = show_message_dialog(
+                    "Glossa",
+                    &format!("Failed to open Settings:\n{error}"),
+                );
+            }
+        }
     }
 
     fn handle_change_shortcut(&mut self) {
@@ -580,23 +531,6 @@ impl TrayRuntime {
                 warn!(error = %error, "failed to send app command from tray");
             }
         }
-    }
-}
-
-fn open_config(path: &Path) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    #[cfg(windows)]
-    {
-        let _ = Command::new("cmd")
-            .args(["/C", "start", "", &path.display().to_string()])
-            .spawn();
-        return;
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = Command::new("xdg-open").arg(path).spawn();
     }
 }
 

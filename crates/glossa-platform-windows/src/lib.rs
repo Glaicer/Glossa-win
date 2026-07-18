@@ -11,4 +11,6 @@ pub mod setup;
 pub mod temp;
 pub mod tray;
 pub mod updater;
+#[cfg(windows)]
+mod win_style;
 mod winmsg;
