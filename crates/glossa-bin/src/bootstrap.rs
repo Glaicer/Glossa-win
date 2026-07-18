@@ -44,14 +44,18 @@ pub async fn load_config_or_default(path: Option<PathBuf>) -> anyhow::Result<App
     }
 }
 
-/// Initializes tracing based on the config logging level.
+/// Initializes tracing based on the config logging level and console sink flag.
 pub fn init_tracing(config: &AppConfig) -> anyhow::Result<()> {
-    let filter = match config.logging.level {
-        LogLevel::Trace => "trace",
-        LogLevel::Debug => "debug",
-        LogLevel::Info => "info",
-        LogLevel::Warn => "warn",
-        LogLevel::Error => "error",
+    let filter = if config.logging.console {
+        match config.logging.level {
+            LogLevel::Trace => "trace",
+            LogLevel::Debug => "debug",
+            LogLevel::Info => "info",
+            LogLevel::Warn => "warn",
+            LogLevel::Error => "error",
+        }
+    } else {
+        "off"
     };
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::new(filter))

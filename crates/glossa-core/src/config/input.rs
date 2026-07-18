@@ -4,14 +4,14 @@ use crate::CoreError;
 
 /// Input backend used to receive global recording commands.
 ///
-/// `Portal` is the historical name from the Linux GlobalShortcuts portal.
-/// On Windows it means the native global hotkey backend. The TOML value
-/// `"hotkey"` is accepted as an alias.
+/// `"portal"` is accepted as a legacy TOML alias from the Linux GlobalShortcuts
+/// portal name; on Windows both mean the native global hotkey backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InputBackend {
-    #[serde(alias = "hotkey")]
-    Portal,
+    /// Native global hotkey backend (`RegisterHotKey` on Windows).
+    #[serde(alias = "portal")]
+    Hotkey,
     None,
 }
 
@@ -35,7 +35,7 @@ pub struct InputConfig {
 impl Default for InputConfig {
     fn default() -> Self {
         Self {
-            backend: InputBackend::Portal,
+            backend: InputBackend::Hotkey,
             shortcut: "Ctrl+Alt+Space".into(),
             mode: InputMode::Toggle,
         }

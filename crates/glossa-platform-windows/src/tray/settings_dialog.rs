@@ -397,14 +397,14 @@ mod ui {
         y += 26;
         create_label(hwnd, margin, y + 4, label_w, 20, "Backend", 2001, font);
         let backend = create_combo(hwnd, field_x, y, field_w, 220, ID_BACKEND, font);
-        for label in ["portal", "none"] {
+        for label in ["hotkey", "none"] {
             send_combo_string(backend, label);
         }
         SendMessageW(
             backend,
             CB_SETCURSEL,
             match initial.input_backend {
-                InputBackend::Portal => 0,
+                InputBackend::Hotkey => 0,
                 InputBackend::None => 1,
             },
             0,
@@ -660,7 +660,7 @@ mod ui {
                 Ok(SettingsValues {
                     input_backend: match SendMessageW(state.backend, CB_GETCURSEL, 0, 0) {
                         1 => InputBackend::None,
-                        _ => InputBackend::Portal,
+                        _ => InputBackend::Hotkey,
                     },
                     input_mode: match SendMessageW(state.mode, CB_GETCURSEL, 0, 0) {
                         1 => InputMode::PushToTalk,

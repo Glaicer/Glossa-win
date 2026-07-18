@@ -82,10 +82,12 @@ Cross-compiling from Linux requires a Windows target and linker (`x86_64-pc-wind
 
 ## Configuration notes
 
-- `input.backend = "hotkey"` (alias of `"portal"`) enables the global hotkey backend
+- `input.backend = "hotkey"` enables the global hotkey backend (`"portal"` is a legacy alias)
 - `input.shortcut` accepts `Ctrl+Alt+Space` or `<Ctrl><Alt>space`
-- `control.socket_path = "auto"` → `127.0.0.1:47823`
-- `paste.clipboard_command` / `paste.type_command` are kept for schema compatibility; the Windows build always uses native adapters
+- `control.socket_path = "auto"` → loopback TCP `127.0.0.1:47823` (name is historical; not a Unix socket)
+- Clipboard/paste are always native (`arboard` + `enigo`); there are no external command knobs
+- `logging.console` enables stderr logging (`journal` is a legacy alias); there is no file sink
+- `audio.format` supports `wav` only
 - Default config path: `%APPDATA%\glossa\config.toml`
 - Default asset path: `%LOCALAPPDATA%\glossa\assets\...`
 

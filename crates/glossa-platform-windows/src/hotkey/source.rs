@@ -148,7 +148,7 @@ mod tests {
 
     fn test_input_config() -> InputConfig {
         InputConfig {
-            backend: glossa_core::InputBackend::Portal,
+            backend: glossa_core::InputBackend::Hotkey,
             shortcut: TEST_SHORTCUT.into(),
             mode: InputMode::Toggle,
         }

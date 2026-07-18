@@ -17,28 +17,28 @@ pub enum LogLevel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoggingConfig {
     pub level: LogLevel,
-    pub journal: bool,
-    pub file: bool,
+    /// When true, log to the console/stderr sink.
+    /// `"journal"` remains a deserialize alias from the Linux journald name.
+    #[serde(default = "default_console", alias = "journal")]
+    pub console: bool,
+}
+
+fn default_console() -> bool {
+    true
 }
 
 impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             level: LogLevel::Info,
-            // On Windows, `journal` means "log to the console/stderr sink".
-            journal: true,
-            file: false,
+            console: true,
         }
     }
 }
 
 impl LoggingConfig {
     pub(crate) fn validate(&self) -> Result<(), CoreError> {
-        if !self.journal && !self.file {
-            return Err(CoreError::InvalidConfig(
-                "logging must enable at least one sink (journal/console or file)".into(),
-            ));
-        }
+        // Quiet mode (`console = false`) is allowed; there is no file sink.
         Ok(())
     }
 }

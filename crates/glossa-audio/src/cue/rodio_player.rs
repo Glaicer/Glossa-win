@@ -212,8 +212,8 @@ mod tests {
     async fn disabled_backend_should_noop() {
         let backend = CuePlayerBackend::from_config(
             false,
-            Utf8PathBuf::from("/tmp/start.wav"),
-            Utf8PathBuf::from("/tmp/stop.wav"),
+            Utf8PathBuf::from(r"C:\glossa\start.wav"),
+            Utf8PathBuf::from(r"C:\glossa\stop.wav"),
         );
 
         backend
@@ -232,8 +232,8 @@ mod tests {
     async fn play_start_should_retry_audio_reopen_once_and_still_succeed() {
         let open_calls = Arc::new(AtomicUsize::new(0));
         let player = RodioCuePlayer::new_with_open_audio(
-            Utf8PathBuf::from("/tmp/missing-start.wav"),
-            Utf8PathBuf::from("/tmp/missing-stop.wav"),
+            Utf8PathBuf::from(r"C:\glossa\missing-start.wav"),
+            Utf8PathBuf::from(r"C:\glossa\missing-stop.wav"),
             {
                 let open_calls = Arc::clone(&open_calls);
                 move || {

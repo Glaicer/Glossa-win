@@ -8,7 +8,6 @@ use crate::SessionId;
 #[serde(rename_all = "kebab-case")]
 pub enum AudioFormat {
     Wav,
-    Flac,
 }
 
 impl AudioFormat {
@@ -17,7 +16,6 @@ impl AudioFormat {
     pub fn extension(self) -> &'static str {
         match self {
             Self::Wav => "wav",
-            Self::Flac => "flac",
         }
     }
 }

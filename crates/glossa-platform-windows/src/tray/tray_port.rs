@@ -154,6 +154,11 @@ impl BestEffortTrayPort {
             }
         }
     }
+
+    /// Reloads tray icons from the given UI config (e.g. after theme change + restart).
+    pub fn apply_ui_config(&self, ui: UiConfig) {
+        self.send_command(TrayCommand::ReloadUi(ui));
+    }
 }
 
 #[async_trait]
@@ -181,10 +186,12 @@ enum TrayCommand {
     SetState(TrayState),
     SetShortcut(String),
     ShowError(String),
+    ReloadUi(UiConfig),
 }
 
 struct TrayRuntime {
     tray: TrayIcon,
+    ui: UiConfig,
     idle_icon: Icon,
     recording_icon: Icon,
     processing_icon: Icon,
@@ -211,25 +218,11 @@ fn run_tray_thread(
     app_command_tx: std::sync::Arc<Mutex<Option<UnboundedSender<AppCommand>>>>,
     command_rx: mpsc::Receiver<TrayCommand>,
 ) {
-    let idle_icon = match load_icon(ui.idle_tray_icon().as_std_path()) {
-        Ok(icon) => icon,
+    let (idle_icon, recording_icon, processing_icon) = match load_tray_icons(&ui) {
+        Ok(icons) => icons,
         Err(error) => {
-            warn!(error = %error, "failed to load idle tray icon");
+            warn!(error = %error, "failed to load tray icons");
             return;
-        }
-    };
-    let recording_icon = match load_icon(ui.recording_tray_icon().as_std_path()) {
-        Ok(icon) => icon,
-        Err(error) => {
-            warn!(error = %error, "failed to load recording tray icon");
-            return;
-        }
-    };
-    let processing_icon = match load_icon(ui.processing_tray_icon().as_std_path()) {
-        Ok(icon) => icon,
-        Err(error) => {
-            warn!(error = %error, "failed to load processing tray icon; falling back to idle");
-            idle_icon.clone()
         }
     };
 
@@ -284,6 +277,7 @@ fn run_tray_thread(
 
     let mut runtime = TrayRuntime {
         tray,
+        ui,
         idle_icon,
         recording_icon,
         processing_icon,
@@ -370,6 +364,31 @@ impl TrayRuntime {
             TrayCommand::ShowError(message) => {
                 let _ = show_message_dialog("Glossa", &message);
             }
+            TrayCommand::ReloadUi(ui) => {
+                self.apply_ui(ui);
+            }
+        }
+    }
+
+    fn apply_ui(&mut self, ui: UiConfig) {
+        self.settings.ui_theme = ui.theme;
+        self.ui = ui;
+        self.reload_theme_icons();
+    }
+
+    fn reload_theme_icons(&mut self) {
+        match load_tray_icons(&self.ui) {
+            Ok((idle, recording, processing)) => {
+                self.idle_icon = idle;
+                self.recording_icon = recording;
+                self.processing_icon = processing;
+                if let Err(error) = self.tray.set_icon(Some(self.idle_icon.clone())) {
+                    warn!(error = %error, "failed to apply reloaded tray icon");
+                }
+            }
+            Err(error) => {
+                warn!(error = %error, "failed to reload tray icons for theme");
+            }
         }
     }
 
@@ -405,8 +424,16 @@ impl TrayRuntime {
     fn handle_settings(&mut self) {
         match show_settings_dialog(&self.settings) {
             Ok(Some(updated)) => {
+                let theme_changed = updated.ui_theme != self.settings.ui_theme;
                 self.settings = updated;
                 self.enhancer_item.set_checked(self.settings.llm_enabled);
+                if theme_changed {
+                    // Icons are loaded once at tray start; refresh immediately so the
+                    // notification-area icon matches the new color scheme without waiting
+                    // for a process-level restart (in-process restart keeps this thread).
+                    self.ui.theme = self.settings.ui_theme;
+                    self.reload_theme_icons();
+                }
                 self.persist_settings();
                 self.request_restart();
                 let _ = show_info_dialog(
@@ -526,6 +553,19 @@ impl TrayRuntime {
             }
         }
     }
+}
+
+fn load_tray_icons(ui: &UiConfig) -> Result<(Icon, Icon, Icon), AppError> {
+    let idle_icon = load_icon(ui.idle_tray_icon().as_std_path())?;
+    let recording_icon = load_icon(ui.recording_tray_icon().as_std_path())?;
+    let processing_icon = match load_icon(ui.processing_tray_icon().as_std_path()) {
+        Ok(icon) => icon,
+        Err(error) => {
+            warn!(error = %error, "failed to load processing tray icon; falling back to idle");
+            idle_icon.clone()
+        }
+    };
+    Ok((idle_icon, recording_icon, processing_icon))
 }
 
 fn load_icon(path: &Path) -> Result<Icon, AppError> {

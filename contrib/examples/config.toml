@@ -1,7 +1,7 @@
 [input]
-# Selects the input backend that listens for recording commands; options: "portal" (alias: "hotkey"), "none".
+# Selects the input backend that listens for recording commands; options: "hotkey" (alias: "portal"), "none".
 backend = "hotkey"
-# Global recording shortcut. Windows style (`Ctrl+Alt+Space`) and portal style (`<Ctrl><Alt>space`) are both accepted.
+# Global recording shortcut. Windows style (`Ctrl+Alt+Space`) and legacy portal style (`<Ctrl><Alt>space`) are both accepted.
 shortcut = "Ctrl+Alt+Space"
 # Selects how the hotkey behaves; options: "toggle", "push-to-talk".
 mode = "push-to-talk"
@@ -37,7 +37,7 @@ api_key = ""
 enabled = true
 # Sets the working directory for temporary audio files; options: "auto" (%LOCALAPPDATA%\Temp\glossa) or an absolute directory path.
 work_dir = "auto"
-# Selects the recorded audio container format; options: "wav", "flac".
+# Selects the recorded audio container format; options: "wav".
 format = "wav"
 # Sets the recording sample rate in Hz; options: positive integer values, typically 16000 for the MVP.
 sample_rate_hz = 16000
@@ -59,10 +59,6 @@ persist_audio = false
 mode = "ctrl-v"
 # Appends one trailing space to the pasted transcription for continuous dictation; options: true, false.
 append_space = false
-# Kept for config compatibility; Windows always uses the native clipboard backend.
-clipboard_command = "native"
-# Kept for config compatibility; Windows always uses native SendInput paste.
-type_command = "native"
 
 [ui]
 # Enables best-effort tray integration; options: true, false.
@@ -89,7 +85,5 @@ stop_sound = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\sounds\\stop.wa
 [logging]
 # Sets the minimum log verbosity; options typically include "trace", "debug", "info", "warn", "error".
 level = "info"
-# Enables console/stderr logging; options: true, false.
-journal = true
-# Enables logging to a file sink when implemented; options: true, false.
-file = false
+# Enables console/stderr logging; options: true, false. Legacy key `journal` is still accepted.
+console = true

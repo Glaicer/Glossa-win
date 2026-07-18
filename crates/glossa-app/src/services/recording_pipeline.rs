@@ -617,7 +617,7 @@ mod tests {
             processing_dependencies(true, "hello world".into(), Ok("Hello, world!".into()));
         let audio = CapturedAudio {
             session_id: SessionId::new(),
-            path: Utf8PathBuf::from("/tmp/test.wav"),
+            path: Utf8PathBuf::from("C:\\glossa\\test.wav"),
             duration_ms: 1000,
             sample_rate_hz: 16000,
             channels: 1,
@@ -642,7 +642,7 @@ mod tests {
             processing_dependencies(false, "hello world".into(), Ok("Hello, world!".into()));
         let audio = CapturedAudio {
             session_id: SessionId::new(),
-            path: Utf8PathBuf::from("/tmp/test.wav"),
+            path: Utf8PathBuf::from("C:\\glossa\\test.wav"),
             duration_ms: 1000,
             sample_rate_hz: 16000,
             channels: 1,
@@ -667,7 +667,7 @@ mod tests {
             processing_dependencies(true, "hello world".into(), Ok("   ".into()));
         let audio = CapturedAudio {
             session_id: SessionId::new(),
-            path: Utf8PathBuf::from("/tmp/test.wav"),
+            path: Utf8PathBuf::from("C:\\glossa\\test.wav"),
             duration_ms: 1000,
             sample_rate_hz: 16000,
             channels: 1,
@@ -694,7 +694,7 @@ mod tests {
             processing_dependencies(true, "hello world".into(), Err("network error".into()));
         let audio = CapturedAudio {
             session_id: SessionId::new(),
-            path: Utf8PathBuf::from("/tmp/test.wav"),
+            path: Utf8PathBuf::from("C:\\glossa\\test.wav"),
             duration_ms: 1000,
             sample_rate_hz: 16000,
             channels: 1,

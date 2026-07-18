@@ -59,11 +59,6 @@ impl AudioConfig {
                 "audio.max_duration_sec must be greater than zero".into(),
             ));
         }
-        if self.format == AudioFormat::Flac {
-            return Err(CoreError::InvalidConfig(
-                "audio.format flac is not implemented yet; use wav for the MVP".into(),
-            ));
-        }
         Ok(())
     }
 }

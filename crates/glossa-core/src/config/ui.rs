@@ -120,17 +120,20 @@ mod tests {
     fn dark_theme_should_prefer_dark_icon_overrides() {
         let ui = UiConfig {
             theme: UiTheme::Dark,
-            idle_dark_icon: Some("/tmp/idle_dark.png".into()),
-            recording_dark_icon: Some("/tmp/recording_dark.png".into()),
-            processing_dark_icon: Some("/tmp/processing_dark.png".into()),
+            idle_dark_icon: Some(r"C:\glossa\idle_dark.png".into()),
+            recording_dark_icon: Some(r"C:\glossa\recording_dark.png".into()),
+            processing_dark_icon: Some(r"C:\glossa\processing_dark.png".into()),
             ..UiConfig::default()
         };
 
-        assert_eq!(ui.idle_tray_icon().as_str(), "/tmp/idle_dark.png");
-        assert_eq!(ui.recording_tray_icon().as_str(), "/tmp/recording_dark.png");
+        assert_eq!(ui.idle_tray_icon().as_str(), r"C:\glossa\idle_dark.png");
+        assert_eq!(
+            ui.recording_tray_icon().as_str(),
+            r"C:\glossa\recording_dark.png"
+        );
         assert_eq!(
             ui.processing_tray_icon().as_str(),
-            "/tmp/processing_dark.png"
+            r"C:\glossa\processing_dark.png"
         );
     }
 
@@ -150,5 +153,33 @@ mod tests {
             ui.processing_tray_icon(),
             ui.processing_icon.as_deref().unwrap()
         );
+    }
+
+    #[test]
+    fn changing_theme_should_switch_selected_tray_icon_paths() {
+        // Regression: settings save only updated config.theme; tray must re-resolve
+        // paths when theme flips (see BestEffortTrayPort reload_theme_icons).
+        let mut ui = UiConfig {
+            theme: UiTheme::Light,
+            idle_icon: r"C:\glossa\idle.png".into(),
+            recording_icon: r"C:\glossa\recording.png".into(),
+            processing_icon: Some(r"C:\glossa\processing.png".into()),
+            idle_dark_icon: Some(r"C:\glossa\idle_dark.png".into()),
+            recording_dark_icon: Some(r"C:\glossa\recording_dark.png".into()),
+            processing_dark_icon: Some(r"C:\glossa\processing_dark.png".into()),
+            ..UiConfig::default()
+        };
+
+        assert_eq!(ui.idle_tray_icon().as_str(), r"C:\glossa\idle.png");
+
+        ui.theme = UiTheme::Dark;
+        assert_eq!(ui.idle_tray_icon().as_str(), r"C:\glossa\idle_dark.png");
+        assert_eq!(
+            ui.recording_tray_icon().as_str(),
+            r"C:\glossa\recording_dark.png"
+        );
+
+        ui.theme = UiTheme::Light;
+        assert_eq!(ui.idle_tray_icon().as_str(), r"C:\glossa\idle.png");
     }
 }

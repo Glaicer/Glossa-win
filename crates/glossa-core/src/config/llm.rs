@@ -174,8 +174,8 @@ mod tests {
         let config = AppConfig::from_toml_str(
             r#"
 [input]
-backend = "portal"
-shortcut = "<Ctrl><Alt>space"
+backend = "hotkey"
+shortcut = "Ctrl+Alt+Space"
 mode = "toggle"
 
 [control]
@@ -203,20 +203,17 @@ persist_audio = false
 [paste]
 mode = "ctrl-v"
 append_space = false
-clipboard_command = "wl-copy"
-type_command = "dotoolc"
 
 [ui]
 tray = true
-idle_icon = "/tmp/idle.png"
-recording_icon = "/tmp/recording.png"
-start_sound = "/tmp/start.wav"
-stop_sound = "/tmp/stop.wav"
+idle_icon = "C:\\idle.png"
+recording_icon = "C:\\recording.png"
+start_sound = "C:\\start.wav"
+stop_sound = "C:\\stop.wav"
 
 [logging]
 level = "info"
-journal = true
-file = false
+console = true
 "#,
         )
         .expect("config should parse");
@@ -231,8 +228,8 @@ file = false
         let config = AppConfig::from_toml_str(
             r#"
 [input]
-backend = "portal"
-shortcut = "<Ctrl><Alt>space"
+backend = "hotkey"
+shortcut = "Ctrl+Alt+Space"
 mode = "toggle"
 
 [control]
@@ -260,20 +257,17 @@ persist_audio = false
 [paste]
 mode = "ctrl-v"
 append_space = false
-clipboard_command = "wl-copy"
-type_command = "dotoolc"
 
 [ui]
 tray = true
-idle_icon = "/tmp/idle.png"
-recording_icon = "/tmp/recording.png"
-start_sound = "/tmp/start.wav"
-stop_sound = "/tmp/stop.wav"
+idle_icon = "C:\\idle.png"
+recording_icon = "C:\\recording.png"
+start_sound = "C:\\start.wav"
+stop_sound = "C:\\stop.wav"
 
 [logging]
 level = "info"
-journal = true
-file = false
+console = true
 
 [LLM]
 enabled = true

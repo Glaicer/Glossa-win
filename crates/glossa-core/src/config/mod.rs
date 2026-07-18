@@ -18,7 +18,7 @@ pub use self::logging::{LogLevel, LoggingConfig};
 pub use self::paste::PasteConfig;
 pub use self::provider::ProviderConfig;
 pub use self::ui::{UiConfig, UiTheme};
-use crate::{AppStateKind, CoreError, PasteMode, ProviderKind};
+use crate::{AppStateKind, CoreError, ProviderKind};
 
 /// Default loopback IPC endpoint used when `control.socket_path = "auto"`.
 pub const DEFAULT_IPC_ENDPOINT: &str = "127.0.0.1:47823";
@@ -70,7 +70,7 @@ impl AppConfig {
             state: AppStateKind::Idle,
             provider: self.provider.kind,
             tray_available: self.ui.tray,
-            portal_available: self.input.backend == InputBackend::Portal,
+            hotkey_available: self.input.backend == InputBackend::Hotkey,
         }
     }
 }
@@ -202,12 +202,7 @@ impl Default for AppConfig {
                 api_key: SecretSource::Env("GROQ_API_KEY".into()),
             },
             audio: AudioConfig::default(),
-            paste: PasteConfig {
-                mode: PasteMode::CtrlV,
-                append_space: false,
-                clipboard_command: "native".into(),
-                type_command: "native".into(),
-            },
+            paste: PasteConfig::default(),
             ui: UiConfig::default(),
             logging: LoggingConfig::default(),
             llm: LlmConfig::default(),
@@ -218,12 +213,12 @@ impl Default for AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AudioFormat;
+    use crate::PasteMode;
 
     #[test]
-    fn default_config_should_use_native_paste_command() {
-        assert_eq!(AppConfig::default().paste.type_command, "native");
-        assert_eq!(AppConfig::default().paste.clipboard_command, "native");
+    fn default_config_should_use_hotkey_backend() {
+        assert_eq!(AppConfig::default().input.backend, InputBackend::Hotkey);
+        assert!(AppConfig::default().initial_status().hotkey_available);
     }
 
     #[test]
@@ -250,6 +245,11 @@ mod tests {
     }
 
     #[test]
+    fn default_config_should_enable_console_logging() {
+        assert!(AppConfig::default().logging.console);
+    }
+
+    #[test]
     fn config_should_accept_backend_none() {
         let config = AppConfig {
             input: InputConfig {
@@ -261,11 +261,65 @@ mod tests {
         };
 
         assert!(config.validate().is_ok());
-        assert!(!config.initial_status().portal_available);
+        assert!(!config.initial_status().hotkey_available);
     }
 
     #[test]
-    fn config_should_accept_hotkey_backend_alias() {
+    fn config_should_accept_portal_backend_alias() {
+        let config = AppConfig::from_toml_str(
+            r#"
+[input]
+backend = "portal"
+shortcut = "Ctrl+Alt+Space"
+mode = "toggle"
+
+[control]
+enable_cli = true
+socket_path = "auto"
+
+[provider]
+kind = "groq"
+base_url = "https://api.groq.com/openai/v1"
+model = "whisper-large-v3"
+api_key = "env:GROQ_API_KEY"
+
+[audio]
+enabled = true
+work_dir = "auto"
+format = "wav"
+sample_rate_hz = 16000
+channels = 1
+trim_silence = true
+trim_threshold = 500
+min_duration_ms = 150
+max_duration_sec = 120
+
+[paste]
+mode = "ctrl-v"
+append_space = false
+
+[ui]
+tray = true
+idle_icon = "C:\\idle.png"
+recording_icon = "C:\\recording.png"
+start_sound = "C:\\start.wav"
+stop_sound = "C:\\stop.wav"
+
+[logging]
+level = "info"
+journal = true
+"#,
+        )
+        .expect("portal backend alias should parse");
+
+        assert_eq!(config.input.backend, InputBackend::Hotkey);
+        assert_eq!(config.input.shortcut, "Ctrl+Alt+Space");
+        assert!(config.initial_status().hotkey_available);
+        assert!(config.logging.console);
+    }
+
+    #[test]
+    fn config_should_ignore_legacy_paste_command_keys() {
         let config = AppConfig::from_toml_str(
             r#"
 [input]
@@ -297,8 +351,8 @@ max_duration_sec = 120
 [paste]
 mode = "ctrl-v"
 append_space = false
-clipboard_command = "native"
-type_command = "native"
+clipboard_command = "wl-copy"
+type_command = "dotoolc"
 
 [ui]
 tray = true
@@ -309,15 +363,14 @@ stop_sound = "C:\\stop.wav"
 
 [logging]
 level = "info"
-journal = true
+console = true
 file = false
 "#,
         )
-        .expect("hotkey backend alias should parse");
+        .expect("legacy paste command keys should be ignored");
 
-        assert_eq!(config.input.backend, InputBackend::Portal);
-        assert_eq!(config.input.shortcut, "Ctrl+Alt+Space");
-        assert!(config.initial_status().portal_available);
+        assert_eq!(config.paste.mode, PasteMode::CtrlV);
+        assert!(!config.paste.append_space);
     }
 
     #[test]
@@ -389,17 +442,53 @@ file = false
     }
 
     #[test]
-    fn config_should_reject_flac_until_supported() {
-        let config = AppConfig {
-            audio: AudioConfig {
-                format: AudioFormat::Flac,
-                ..AudioConfig::default()
-            },
-            ..AppConfig::default()
-        };
+    fn config_should_reject_unknown_audio_format() {
+        let error = AppConfig::from_toml_str(
+            r#"
+[input]
+backend = "hotkey"
+shortcut = "Ctrl+Alt+Space"
+mode = "toggle"
 
-        let error = config.validate().expect_err("validation should fail");
-        assert!(error.to_string().contains("flac"));
+[control]
+enable_cli = true
+socket_path = "auto"
+
+[provider]
+kind = "groq"
+base_url = "https://api.groq.com/openai/v1"
+model = "whisper-large-v3"
+api_key = "env:GROQ_API_KEY"
+
+[audio]
+enabled = true
+work_dir = "auto"
+format = "flac"
+sample_rate_hz = 16000
+channels = 1
+trim_silence = true
+trim_threshold = 500
+min_duration_ms = 150
+max_duration_sec = 120
+
+[paste]
+mode = "ctrl-v"
+
+[ui]
+tray = true
+idle_icon = "C:\\idle.png"
+recording_icon = "C:\\recording.png"
+start_sound = "C:\\start.wav"
+stop_sound = "C:\\stop.wav"
+
+[logging]
+level = "info"
+console = true
+"#,
+        )
+        .expect_err("flac format should fail to deserialize");
+
+        assert!(error.to_string().to_lowercase().contains("flac") || error.to_string().contains("unknown"));
     }
 
     #[test]
@@ -407,8 +496,8 @@ file = false
         let config = AppConfig::from_toml_str(
             r#"
 [input]
-backend = "portal"
-shortcut = "<Ctrl><Alt>space"
+backend = "hotkey"
+shortcut = "Ctrl+Alt+Space"
 mode = "toggle"
 
 [control]
@@ -435,20 +524,17 @@ max_duration_sec = 120
 [paste]
 mode = "ctrl-shift-v"
 append_space = false
-clipboard_command = "native"
-type_command = "native"
 
 [ui]
 tray = true
-idle_icon = "/tmp/idle.png"
-recording_icon = "/tmp/recording.png"
-start_sound = "/tmp/start.wav"
-stop_sound = "/tmp/stop.wav"
+idle_icon = "C:\\idle.png"
+recording_icon = "C:\\recording.png"
+start_sound = "C:\\start.wav"
+stop_sound = "C:\\stop.wav"
 
 [logging]
 level = "info"
-journal = true
-file = false
+console = true
 "#,
         )
         .expect("config should parse");

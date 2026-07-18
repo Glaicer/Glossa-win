@@ -99,7 +99,7 @@ async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> 
             }));
         }
 
-        if input_backend == InputBackend::Portal {
+        if input_backend == InputBackend::Hotkey {
             let tx = handle.command_sender();
             let source: Box<dyn CommandSource> = Box::new(GlobalHotkeySource::new(hotkey_config));
             tasks.push(tokio::spawn(async move {
@@ -119,6 +119,8 @@ async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> 
             ActorExit::Restart => {
                 info!(path = %config_path.display(), "restarting glossa daemon");
                 config = prepare_runtime_config(load_config(&config_path).await?);
+                // Tray thread outlives the actor; push reloaded UI (theme/icons) into it.
+                tray.apply_ui_config(config.ui.clone());
             }
         }
     }

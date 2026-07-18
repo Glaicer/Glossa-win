@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CommandOrigin {
-    PortalShortcut,
+    /// Global hotkey. `"portal-shortcut"` remains a deserialize alias.
+    #[serde(alias = "portal-shortcut")]
+    HotkeyShortcut,
     CliControl,
     TrayMenu,
     EscapeKey,

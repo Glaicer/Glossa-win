@@ -12,14 +12,14 @@ pub enum HotkeySignal {
 pub fn map_hotkey_signal_to_command(mode: InputMode, signal: HotkeySignal) -> Option<AppCommand> {
     match (mode, signal) {
         (InputMode::Toggle, HotkeySignal::Activated) => Some(AppCommand::ToggleRecording {
-            origin: CommandOrigin::PortalShortcut,
+            origin: CommandOrigin::HotkeyShortcut,
         }),
         (InputMode::Toggle, HotkeySignal::Deactivated) => None,
         (InputMode::PushToTalk, HotkeySignal::Activated) => Some(AppCommand::StartRecording {
-            origin: CommandOrigin::PortalShortcut,
+            origin: CommandOrigin::HotkeyShortcut,
         }),
         (InputMode::PushToTalk, HotkeySignal::Deactivated) => Some(AppCommand::StopRecording {
-            origin: CommandOrigin::PortalShortcut,
+            origin: CommandOrigin::HotkeyShortcut,
         }),
     }
 }
@@ -34,7 +34,7 @@ mod tests {
         assert!(matches!(
             command,
             Some(AppCommand::ToggleRecording {
-                origin: CommandOrigin::PortalShortcut,
+                origin: CommandOrigin::HotkeyShortcut,
             })
         ));
     }
@@ -51,7 +51,7 @@ mod tests {
         assert!(matches!(
             command,
             Some(AppCommand::StartRecording {
-                origin: CommandOrigin::PortalShortcut,
+                origin: CommandOrigin::HotkeyShortcut,
             })
         ));
     }
@@ -63,7 +63,7 @@ mod tests {
         assert!(matches!(
             command,
             Some(AppCommand::StopRecording {
-                origin: CommandOrigin::PortalShortcut,
+                origin: CommandOrigin::HotkeyShortcut,
             })
         ));
     }

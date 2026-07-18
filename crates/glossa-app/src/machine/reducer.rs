@@ -130,7 +130,7 @@ mod tests {
         let decision = reduce(
             &AppState::Idle,
             &AppCommand::ToggleRecording {
-                origin: CommandOrigin::PortalShortcut,
+                origin: CommandOrigin::HotkeyShortcut,
             },
         )
         .expect("reducer should succeed");

@@ -58,7 +58,6 @@ impl SttClient for HttpSttClient {
         let filename = audio.path.file_name().unwrap_or("capture.wav").to_string();
         let mime = match audio.path.extension() {
             Some("wav") => "audio/wav",
-            Some("flac") => "audio/flac",
             _ => "application/octet-stream",
         };
         let file_part = Part::bytes(bytes)

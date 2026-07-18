@@ -313,8 +313,7 @@ pub(super) fn llm_api_key_is_available(configured: &str) -> bool {
 
 pub(super) fn input_backend_id(value: InputBackend) -> &'static str {
     match value {
-        // Prefer the Windows-facing name; "portal" remains a accepted config alias.
-        InputBackend::Portal => "hotkey",
+        InputBackend::Hotkey => "hotkey",
         InputBackend::None => "none",
     }
 }
@@ -506,9 +505,9 @@ mod tests {
     fn valid_config_source() -> String {
         r#"[input]
 # Backend comment
-backend = "portal"
+backend = "hotkey"
 mode = "push-to-talk"
-shortcut = "<Ctrl><Alt>space"
+shortcut = "Ctrl+Alt+Space"
 
 [control]
 enable_cli = true # keep this comment
@@ -535,25 +534,22 @@ persist_audio = false
 [paste]
 mode = "ctrl-v"
 append_space = false # keep this comment
-clipboard_command = "wl-copy"
-type_command = "dotoolc"
 
 [ui]
 theme = "dark"
 tray = true
-idle_icon = "/tmp/idle.png"
-recording_icon = "/tmp/recording.png"
-processing_icon = "/tmp/processing.png"
-idle_dark_icon = "/tmp/idle_dark.png"
-recording_dark_icon = "/tmp/recording_dark.png"
-processing_dark_icon = "/tmp/processing_dark.png"
-start_sound = "/tmp/start.wav"
-stop_sound = "/tmp/stop.wav"
+idle_icon = "C:/glossa/idle.png"
+recording_icon = "C:/glossa/recording.png"
+processing_icon = "C:/glossa/processing.png"
+idle_dark_icon = "C:/glossa/idle_dark.png"
+recording_dark_icon = "C:/glossa/recording_dark.png"
+processing_dark_icon = "C:/glossa/processing_dark.png"
+start_sound = "C:/glossa/start.wav"
+stop_sound = "C:/glossa/stop.wav"
 
 [logging]
 level = "info"
-journal = true
-file = false
+console = true
 
 [LLM]
 enabled = false
@@ -620,25 +616,22 @@ persist_audio = false
 [paste]
 mode = "shift-insert"
 append_space = true # keep this comment
-clipboard_command = "wl-copy"
-type_command = "dotoolc"
 
 [ui]
 theme = "light"
 tray = true
-idle_icon = "/tmp/idle.png"
-recording_icon = "/tmp/recording.png"
-processing_icon = "/tmp/processing.png"
-idle_dark_icon = "/tmp/idle_dark.png"
-recording_dark_icon = "/tmp/recording_dark.png"
-processing_dark_icon = "/tmp/processing_dark.png"
-start_sound = "/tmp/start.wav"
-stop_sound = "/tmp/stop.wav"
+idle_icon = "C:/glossa/idle.png"
+recording_icon = "C:/glossa/recording.png"
+processing_icon = "C:/glossa/processing.png"
+idle_dark_icon = "C:/glossa/idle_dark.png"
+recording_dark_icon = "C:/glossa/recording_dark.png"
+processing_dark_icon = "C:/glossa/processing_dark.png"
+start_sound = "C:/glossa/start.wav"
+stop_sound = "C:/glossa/stop.wav"
 
 [logging]
 level = "info"
-journal = true
-file = false
+console = true
 
 [LLM]
 enabled = true
@@ -698,26 +691,23 @@ persist_audio = false
 
 [paste]
 mode = "shift-insert"
-clipboard_command = "wl-copy"
-type_command = "dotoolc"
 append_space = true
 
 [ui]
 theme = "light"
 tray = true
-idle_icon = "/tmp/idle.png"
-recording_icon = "/tmp/recording.png"
-processing_icon = "/tmp/processing.png"
-idle_dark_icon = "/tmp/idle_dark.png"
-recording_dark_icon = "/tmp/recording_dark.png"
-processing_dark_icon = "/tmp/processing_dark.png"
-start_sound = "/tmp/start.wav"
-stop_sound = "/tmp/stop.wav"
+idle_icon = "C:/glossa/idle.png"
+recording_icon = "C:/glossa/recording.png"
+processing_icon = "C:/glossa/processing.png"
+idle_dark_icon = "C:/glossa/idle_dark.png"
+recording_dark_icon = "C:/glossa/recording_dark.png"
+processing_dark_icon = "C:/glossa/processing_dark.png"
+start_sound = "C:/glossa/start.wav"
+stop_sound = "C:/glossa/stop.wav"
 
 [logging]
 level = "info"
-journal = true
-file = false
+console = true
 
 [LLM]
 enabled = true

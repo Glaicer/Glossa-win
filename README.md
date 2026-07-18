@@ -114,7 +114,7 @@ The Settings dialog covers input backend/mode, CLI control, STT provider, paste,
 
 ```toml
 [input]
-backend = "hotkey"          # or "portal" (same meaning on Windows)
+backend = "hotkey"          # legacy alias: "portal"
 shortcut = "Ctrl+Alt+Space" # also accepts <Ctrl><Alt>space
 mode = "push-to-talk"       # or "toggle"
 ```
@@ -124,7 +124,15 @@ mode = "push-to-talk"       # or "toggle"
 ```toml
 [control]
 enable_cli = true
-socket_path = "auto"   # resolves to 127.0.0.1:47823
+socket_path = "auto"   # loopback TCP: 127.0.0.1:47823
+```
+
+### Logging
+
+```toml
+[logging]
+level = "info"
+console = true         # legacy alias: journal
 ```
 
 ## Development

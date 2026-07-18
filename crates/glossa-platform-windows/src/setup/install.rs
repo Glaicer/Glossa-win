@@ -139,7 +139,7 @@ pub fn build_app_config(answers: &SetupAnswers, install_dir: &Path) -> Result<Ap
 
     let config = AppConfig {
         input: InputConfig {
-            backend: InputBackend::Portal,
+            backend: InputBackend::Hotkey,
             shortcut: answers.shortcut.trim().to_owned(),
             mode: answers.mode,
         },

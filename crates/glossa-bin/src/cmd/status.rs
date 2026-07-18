@@ -11,8 +11,8 @@ pub async fn run(config_path: Option<std::path::PathBuf>) -> anyhow::Result<()> 
     match response {
         IpcResponse::Status { status } => {
             println!(
-                "state={:?} provider={:?} tray_available={} portal_available={}",
-                status.state, status.provider, status.tray_available, status.portal_available
+                "state={:?} provider={:?} tray_available={} hotkey_available={}",
+                status.state, status.provider, status.tray_available, status.hotkey_available
             );
             Ok(())
         }

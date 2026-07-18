@@ -454,7 +454,7 @@ mod tests {
         async fn stop(self: Box<Self>) -> Result<CapturedAudio, AppError> {
             Ok(CapturedAudio {
                 session_id: SessionId::new(),
-                path: Utf8PathBuf::from("/tmp/test.wav"),
+                path: Utf8PathBuf::from("C:\\glossa\\test.wav"),
                 duration_ms: 500,
                 sample_rate_hz: 16_000,
                 channels: 1,
@@ -476,7 +476,7 @@ mod tests {
                 .push(self.session_id);
             Ok(CapturedAudio {
                 session_id: self.session_id,
-                path: Utf8PathBuf::from("/tmp/test.wav"),
+                path: Utf8PathBuf::from("C:\\glossa\\test.wav"),
                 duration_ms: 500,
                 sample_rate_hz: 16_000,
                 channels: 1,
@@ -636,7 +636,7 @@ mod tests {
             format: AudioFormat,
         ) -> Result<Utf8PathBuf, AppError> {
             Ok(Utf8PathBuf::from(format!(
-                "/tmp/{session_id}.{}",
+                r"C:\glossa\{session_id}.{}",
                 format.extension()
             )))
         }
@@ -662,7 +662,7 @@ mod tests {
             format: AudioFormat,
         ) -> Result<Utf8PathBuf, AppError> {
             Ok(Utf8PathBuf::from(format!(
-                "/tmp/{session_id}.{}",
+                r"C:\glossa\{session_id}.{}",
                 format.extension()
             )))
         }

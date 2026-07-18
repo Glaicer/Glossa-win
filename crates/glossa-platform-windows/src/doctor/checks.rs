@@ -44,11 +44,11 @@ fn check_hotkey(config: &AppConfig) -> DoctorFinding {
             "Global hotkey",
             "hotkey backend is disabled by configuration",
         ),
-        InputBackend::Portal if config.input.shortcut.trim().is_empty() => fail(
+        InputBackend::Hotkey if config.input.shortcut.trim().is_empty() => fail(
             "Global hotkey",
             "input.shortcut is empty; set a shortcut such as Ctrl+Alt+Space",
         ),
-        InputBackend::Portal => ok(
+        InputBackend::Hotkey => ok(
             "Global hotkey",
             format!("configured shortcut: {}", config.input.shortcut),
         ),
@@ -62,18 +62,11 @@ fn check_clipboard() -> DoctorFinding {
     )
 }
 
-fn check_paste_backend(config: &AppConfig) -> DoctorFinding {
-    if config.paste.type_command == "native" || config.paste.type_command.is_empty() {
-        ok("Paste backend", "native SendInput keyboard emulation")
-    } else {
-        warn(
-            "Paste backend",
-            format!(
-                "type_command is `{}`; Windows build uses the native paste backend",
-                config.paste.type_command
-            ),
-        )
-    }
+fn check_paste_backend(_config: &AppConfig) -> DoctorFinding {
+    ok(
+        "Paste backend",
+        "native SendInput keyboard emulation",
+    )
 }
 
 fn check_tray(config: &AppConfig) -> DoctorFinding {
