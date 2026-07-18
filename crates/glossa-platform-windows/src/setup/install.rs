@@ -212,6 +212,14 @@ pub fn apply_setup(answers: &SetupAnswers) -> Result<SetupResult, AppError> {
     )
     .map_err(|error| AppError::io("failed to write VERSION file", error))?;
 
+    // Bootstrapper that fetches the versioned updater from GitHub releases.
+    const UPDATE_PS1: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contrib/windows/update.ps1"
+    ));
+    fs::write(install_dir.join("update.ps1"), UPDATE_PS1)
+        .map_err(|error| AppError::io("failed to write update.ps1", error))?;
+
     let config_toml = build_config_toml(answers, &install_dir)?;
     fs::write(&config_path, config_toml)
         .map_err(|error| AppError::io("failed to write config.toml", error))?;

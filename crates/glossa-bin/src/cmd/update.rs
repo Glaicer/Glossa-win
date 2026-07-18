@@ -1,13 +1,21 @@
 use anyhow::{anyhow, Context};
 
-use glossa_platform_windows::updater::run_local_updater;
+use glossa_platform_windows::updater::{install_update, UpdaterStatus};
 
 pub async fn run() -> anyhow::Result<()> {
-    let status = run_local_updater().context("failed to start the local updater")?;
+    let result = install_update().context("failed to run the local updater")?;
 
-    if status.success() {
-        return Ok(());
+    match result.status {
+        UpdaterStatus::Updated => {
+            println!("Updated Glossa to {}.", result.version);
+            Ok(())
+        }
+        UpdaterStatus::UpToDate => {
+            println!("Glossa {} is already installed.", result.version);
+            Ok(())
+        }
+        UpdaterStatus::Available => Err(anyhow!(
+            "updater reported an available update without installing"
+        )),
     }
-
-    Err(anyhow!("updater exited with status {status}"))
 }

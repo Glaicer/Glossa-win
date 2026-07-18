@@ -26,6 +26,41 @@ pub(crate) fn show_info_dialog(title: &str, message: &str) -> Result<(), DialogE
     show_message_box(title, message, MessageKind::Info)
 }
 
+/// Shows a Yes/No confirmation dialog. Returns `true` when the user chooses Yes.
+pub(crate) fn show_confirmation_dialog(title: &str, message: &str) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        fn to_wide(value: &str) -> Vec<u16> {
+            std::ffi::OsStr::new(value)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect()
+        }
+
+        let title_wide = to_wide(title);
+        let message_wide = to_wide(message);
+        // SAFETY: title/message are NUL-terminated wide strings; no window handle is required.
+        let result = unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                std::ptr::null_mut(),
+                message_wide.as_ptr(),
+                title_wide.as_ptr(),
+                windows_sys::Win32::UI::WindowsAndMessaging::MB_YESNO
+                    | windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONQUESTION,
+            )
+        };
+        return result == windows_sys::Win32::UI::WindowsAndMessaging::IDYES;
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = (title, message);
+        false
+    }
+}
+
 enum MessageKind {
     Error,
     Info,

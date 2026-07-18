@@ -24,7 +24,7 @@ use glossa_app::{
 };
 use glossa_core::{AppCommand, AppConfig, CommandOrigin, InputMode, UiConfig};
 
-use crate::dialog::{show_info_dialog, show_message_dialog};
+use crate::dialog::{show_confirmation_dialog, show_info_dialog, show_message_dialog};
 use crate::hotkey::{format_shortcut_display, parse_shortcut, prompt_hotkey_dialog};
 use crate::service::restart_glossa_service;
 use crate::updater::{check_for_update, install_update, UpdaterStatus};
@@ -503,41 +503,72 @@ impl TrayRuntime {
     }
 
     fn handle_update(&self) {
-        match check_for_update() {
-            Ok(UpdaterStatus::UpToDate { version }) => {
+        let check_result = match check_for_update() {
+            Ok(result) => result,
+            Err(error) => {
+                warn!(error = %error, "failed to check for updates from tray");
+                let _ = show_message_dialog("Update", &error.to_string());
+                return;
+            }
+        };
+
+        match check_result.status {
+            UpdaterStatus::UpToDate => {
                 let _ = show_info_dialog(
-                    "Glossa",
-                    &format!("Glossa is up to date ({version})."),
+                    "Update",
+                    &format!(
+                        "The latest version is already installed ({}).",
+                        check_result.version
+                    ),
                 );
             }
-            Ok(UpdaterStatus::UpdateAvailable { current, latest }) => {
-                let _ = show_info_dialog(
-                    "Glossa",
-                    &format!("Update available: {current} → {latest}. Starting updater…"),
+            UpdaterStatus::Available => {
+                let confirmed = show_confirmation_dialog(
+                    "Update",
+                    &format!(
+                        "A new version {} is available.\n\nDo you want to install it now?",
+                        check_result.version
+                    ),
                 );
+                if !confirmed {
+                    return;
+                }
+
                 match install_update() {
-                    Ok(status) if status.success() => {
-                        let _ = show_info_dialog("Glossa", "Update installed.");
+                    Ok(result) if result.status == UpdaterStatus::Updated => {
+                        let _ = show_info_dialog(
+                            "Update",
+                            &format!(
+                                "New version {} installed successfully.\nGlossa will restart shortly.",
+                                result.version
+                            ),
+                        );
                     }
-                    Ok(status) => {
+                    Ok(result) if result.status == UpdaterStatus::UpToDate => {
+                        let _ = show_info_dialog(
+                            "Update",
+                            "The latest version is already installed.",
+                        );
+                    }
+                    Ok(result) => {
+                        warn!(?result, "unexpected updater result after install");
                         let _ = show_message_dialog(
-                            "Glossa",
-                            &format!("Updater exited with status {status}"),
+                            "Update",
+                            "The updater returned an unexpected result.",
                         );
                     }
                     Err(error) => {
-                        let _ = show_message_dialog(
-                            "Glossa",
-                            &format!("Update failed:\n{error}"),
-                        );
+                        warn!(error = %error, "failed to install update from tray");
+                        let _ = show_message_dialog("Update", &error.to_string());
                     }
                 }
             }
-            Ok(UpdaterStatus::Unavailable { reason }) => {
-                let _ = show_info_dialog("Glossa", &reason);
-            }
-            Err(error) => {
-                let _ = show_message_dialog("Glossa", &format!("Update check failed:\n{error}"));
+            UpdaterStatus::Updated => {
+                warn!("update check unexpectedly returned 'updated' status");
+                let _ = show_message_dialog(
+                    "Update",
+                    "The updater returned an unexpected result.",
+                );
             }
         }
     }
