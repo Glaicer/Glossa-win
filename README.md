@@ -38,51 +38,53 @@ I personally recommend using [Groq](https://groq.com/) as it offers the followin
 
 No extra clipboard or keystroke tools are required — paste and clipboard use native Windows APIs.
 
-## Quick start
+## Install
 
-### 1. Build
+### Easy install (recommended)
+
+1. Get `glossa.exe` — download the latest release from [GitHub Releases](https://github.com/Glaicer/Glossa-win/releases), or build from source (below).
+2. Run it once:
+
+On first run (when no config exists), Glossa opens a **setup wizard** that installs everything for you:
+
+- Copies the binary and tray/sound assets to `%LOCALAPPDATA%\glossa`
+- Writes `%APPDATA%\glossa\config.toml`
+- Stores your speach-to-text API key as a user environment variable
+- Optionally enables start at login
+- Optionally starts the daemon immediately
+
+You can also launch the wizard explicitly at any time:
+
+```powershell
+.\glossa.exe setup
+```
+
+After setup, use the tray icon or hold/press your hotkey (default `Ctrl+Alt+Space`) to dictate. Esc cancels an in-progress recording.
+
+### Build from source
+
+Requires a recent [Rust toolchain](https://rustup.rs/) on Windows.
 
 ```powershell
 cargo build --release
+.\target\release\glossa.exe setup
 ```
 
-The binary is written to `target\release\glossa.exe`.
+That runs the same wizard as above, using the binary you just built.
 
-### 2. Install assets and config
+Alternatively, copy files without the wizard:
 
 ```powershell
-$appLocal = Join-Path $env:LOCALAPPDATA "glossa"
-$appRoam  = Join-Path $env:APPDATA "glossa"
-New-Item -ItemType Directory -Force -Path "$appLocal\assets\tray", "$appLocal\assets\sounds", $appRoam | Out-Null
-
-Copy-Item contrib\assets\tray\*   "$appLocal\assets\tray\"
-Copy-Item contrib\assets\sounds\* "$appLocal\assets\sounds\"
-Copy-Item target\release\glossa.exe "$appLocal\glossa.exe"
-
-# Create a starter config if none exists
-if (-not (Test-Path "$appRoam\config.toml")) {
-  $user = $env:USERNAME
-  (Get-Content contrib\examples\config.toml) `
-    -replace '<user>', $user `
-    | Set-Content "$appRoam\config.toml"
-}
+powershell -ExecutionPolicy Bypass -File contrib\windows\install.ps1
 ```
 
-Set your API key in the user environment, or put a literal key in `config.toml`:
+Then set your API key and start the daemon:
 
 ```powershell
 [System.Environment]::SetEnvironmentVariable("GROQ_API_KEY", "gsk_...", "User")
-```
-
-### 3. Run the daemon
-
-```powershell
 & "$env:LOCALAPPDATA\glossa\glossa.exe" --config "$env:APPDATA\glossa\config.toml" daemon
-```
 
-### 4. Optional: start at login
-
-```powershell
+# Optional: start at login
 & "$env:LOCALAPPDATA\glossa\glossa.exe" service start
 ```
 
@@ -90,7 +92,8 @@ Set your API key in the user environment, or put a literal key in `config.toml`:
 
 | Command | Description |
 |---------|-------------|
-| `glossa daemon` | Run the daemon in the foreground (`--config` required) |
+| `glossa` / `glossa daemon` | Run the daemon; first run opens the setup wizard if no config exists |
+| `glossa setup` | Interactive first-run installer (API key, hotkey, assets, autostart) |
 | `glossa service start\|stop\|restart` | Manage Startup-folder autostart |
 | `glossa ctl toggle` | Toggle recording over IPC |
 | `glossa ctl shutdown` | Ask the daemon to shut down |

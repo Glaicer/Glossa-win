@@ -35,8 +35,8 @@ impl Default for SetupAnswers {
             base_url: default_base_url(ProviderKind::Groq).to_owned(),
             model: default_model(ProviderKind::Groq).to_owned(),
             shortcut: "Ctrl+Alt+Space".into(),
-            mode: InputMode::PushToTalk,
-            theme: UiTheme::Dark,
+            mode: InputMode::Toggle,
+            theme: UiTheme::Light,
             autostart: true,
             start_now: true,
         }
@@ -415,10 +415,11 @@ mod tests {
     use glossa_core::InputMode;
 
     #[test]
-    fn default_answers_should_target_groq_push_to_talk() {
+    fn default_answers_should_target_groq_toggle_light() {
         let answers = SetupAnswers::default();
         assert_eq!(answers.provider, ProviderKind::Groq);
-        assert_eq!(answers.mode, InputMode::PushToTalk);
+        assert_eq!(answers.mode, InputMode::Toggle);
+        assert_eq!(answers.theme, UiTheme::Light);
         assert_eq!(answers.model, "whisper-large-v3-turbo");
         assert!(answers.autostart);
         assert!(answers.start_now);
@@ -451,7 +452,12 @@ mod tests {
         assert!(toml.contains("kind = \"groq\""));
         assert!(toml.contains("api_key = \"env:GROQ_API_KEY\""));
         assert!(toml.contains("whisper-large-v3-turbo"));
-        assert!(toml.contains("push-to-talk") || toml.contains("PushToTalk") || toml.contains("push_to_talk") || toml.contains("\"push-to-talk\""));
+        assert!(
+            toml.contains("toggle")
+                || toml.contains("Toggle")
+                || toml.contains("\"toggle\"")
+        );
+        assert!(toml.contains("light") || toml.contains("Light") || toml.contains("\"light\""));
         assert!(toml.contains("idle.png"));
         assert!(toml.contains("start.wav"));
     }

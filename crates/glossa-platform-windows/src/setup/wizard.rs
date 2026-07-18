@@ -487,7 +487,7 @@ mod ui {
             "Push-to-talk",
             font,
             true,
-            true,
+            false,
         );
         let _mode_toggle = create_radio(
             hwnd,
@@ -499,7 +499,7 @@ mod ui {
             "Toggle",
             font,
             false,
-            false,
+            true,
         );
         y += row_h + section_gap;
 
@@ -525,7 +525,7 @@ mod ui {
             "Dark",
             font,
             true,
-            true,
+            false,
         );
         let _theme_light = create_radio(
             hwnd,
@@ -537,7 +537,7 @@ mod ui {
             "Light",
             font,
             false,
-            false,
+            true,
         );
         y += row_h + section_gap;
 
