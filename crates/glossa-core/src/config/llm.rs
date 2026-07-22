@@ -197,7 +197,7 @@ channels = 1
 trim_silence = true
 trim_threshold = 500
 min_duration_ms = 150
-max_duration_sec = 120
+max_duration_sec = 1200
 persist_audio = false
 
 [paste]
@@ -212,7 +212,7 @@ start_sound = "C:\\start.wav"
 stop_sound = "C:\\stop.wav"
 
 [logging]
-level = "info"
+level = "warn"
 console = true
 "#,
         )
@@ -251,7 +251,7 @@ channels = 1
 trim_silence = true
 trim_threshold = 500
 min_duration_ms = 150
-max_duration_sec = 120
+max_duration_sec = 1200
 persist_audio = false
 
 [paste]
@@ -266,7 +266,7 @@ start_sound = "C:\\start.wav"
 stop_sound = "C:\\stop.wav"
 
 [logging]
-level = "info"
+level = "warn"
 console = true
 
 [LLM]

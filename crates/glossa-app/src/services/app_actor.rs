@@ -1,10 +1,10 @@
-use std::{sync::Arc, time::Instant};
+use std::{sync::Arc, time::Duration, time::Instant};
 
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::AbortHandle};
 use tracing::{error, info, warn};
 
 use glossa_core::{
-    AppCommand, AppConfig, AppState, PastingState, RecordSpec, SessionId,
+    AppCommand, AppConfig, AppState, CommandOrigin, PastingState, RecordSpec, SessionId,
 };
 
 use crate::{
@@ -44,6 +44,8 @@ pub struct AppActor {
     deps: AppDependencies,
     state: AppState,
     active_recording: Option<Box<dyn ActiveRecording>>,
+    /// Cancels the pending auto-stop timer for the current recording, if any.
+    max_duration_abort: Option<AbortHandle>,
     command_rx: mpsc::UnboundedReceiver<AppCommand>,
     internal_tx: mpsc::UnboundedSender<InternalEvent>,
     internal_rx: mpsc::UnboundedReceiver<InternalEvent>,
@@ -71,6 +73,7 @@ impl AppActor {
             deps,
             state: AppState::Idle,
             active_recording: None,
+            max_duration_abort: None,
             command_rx,
             internal_tx,
             internal_rx,
@@ -183,11 +186,33 @@ impl AppActor {
             } => {
                 self.finish_cycle(session_id, outcome).await;
             }
+            InternalEvent::MaxDurationReached { session_id } => {
+                if !matches!(
+                    self.state,
+                    AppState::Recording(glossa_core::RecordingState {
+                        session_id: current
+                    }) if current == session_id
+                ) {
+                    return Ok(());
+                }
+
+                info!(
+                    %session_id,
+                    max_duration_sec = self.config.audio.max_duration_sec,
+                    "max recording duration reached; stopping"
+                );
+                let _ = self
+                    .handle_command(AppCommand::StopRecording {
+                        origin: CommandOrigin::Internal,
+                    })
+                    .await?;
+            }
         }
         Ok(())
     }
 
     async fn abort_recording(&mut self, session_id: SessionId) {
+        self.clear_max_duration_timer();
         let abort_error = match self.active_recording.take() {
             Some(recording) => recording.abort().await.err(),
             None => {
@@ -237,11 +262,12 @@ impl AppActor {
             .create_recording_path(session_id, self.config.audio.format)
             .await?;
         let path_prep_ms = path_started_at.elapsed().as_millis();
+        let max_duration_sec = self.config.audio.max_duration_sec;
         let spec = RecordSpec {
             sample_rate_hz: self.config.audio.sample_rate_hz,
             channels: self.config.audio.channels,
             format: self.config.audio.format,
-            max_duration_sec: self.config.audio.max_duration_sec,
+            max_duration_sec,
         };
         let capture_started_at = Instant::now();
         match self
@@ -252,9 +278,11 @@ impl AppActor {
         {
             Ok(recording) => {
                 self.active_recording = Some(recording);
+                self.arm_max_duration_timer(session_id, max_duration_sec);
                 info!(
                     %session_id,
                     path = %path,
+                    max_duration_sec,
                     path_prep_ms,
                     capture_startup_ms = capture_started_at.elapsed().as_millis(),
                     total_startup_ms = startup_started_at.elapsed().as_millis(),
@@ -281,6 +309,7 @@ impl AppActor {
     }
 
     async fn stop_recording(&mut self, session_id: SessionId) -> Result<(), AppError> {
+        self.clear_max_duration_timer();
         let Some(recording) = self.active_recording.take() else {
             warn!(%session_id, "stop requested without an active recording");
             self.state = AppState::Idle;
@@ -307,6 +336,22 @@ impl AppActor {
         Ok(())
     }
 
+    fn arm_max_duration_timer(&mut self, session_id: SessionId, max_duration_sec: u32) {
+        self.clear_max_duration_timer();
+        let tx = self.internal_tx.clone();
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(u64::from(max_duration_sec))).await;
+            let _ = tx.send(InternalEvent::MaxDurationReached { session_id });
+        });
+        self.max_duration_abort = Some(handle.abort_handle());
+    }
+
+    fn clear_max_duration_timer(&mut self) {
+        if let Some(handle) = self.max_duration_abort.take() {
+            handle.abort();
+        }
+    }
+
     async fn finish_cycle(&mut self, session_id: SessionId, outcome: CycleOutcome) {
         match &outcome {
             CycleOutcome::Completed => info!(%session_id, "cycle completed"),
@@ -325,6 +370,7 @@ impl AppActor {
     }
 
     async fn shutdown(&mut self) -> Result<(), AppError> {
+        self.clear_max_duration_timer();
         if let Some(recording) = self.active_recording.take() {
             let _ = recording.abort().await;
         }
@@ -861,6 +907,163 @@ mod tests {
                 .expect("mutex should not be poisoned")
                 .is_empty(),
             "cancel should not show tray errors"
+        );
+    }
+
+    #[tokio::test]
+    async fn max_duration_reached_should_stop_active_recording() {
+        let lifecycle = Arc::new(RecordingLifecycle::default());
+        let cue_events = Arc::new(Mutex::new(Vec::new()));
+        let deps = AppDependencies {
+            audio_capture: Arc::new(TrackingAudioCapture {
+                lifecycle: Arc::clone(&lifecycle),
+            }),
+            trimmer: Arc::new(FakeTrimmer),
+            cue_player: Arc::new(TrackingCuePlayer {
+                events: Arc::clone(&cue_events),
+            }),
+            stt_client: Arc::new(FakeSttClient),
+            text_enhancer: Arc::new(NoopTextEnhancer),
+            clipboard: Arc::new(FakeClipboard),
+            paste: Arc::new(FakePaste),
+            tray: Arc::new(crate::ports::NullTrayPort),
+            temp_store: Arc::new(FakeTempStore),
+        };
+        let (mut actor, handle) = AppActor::new(AppConfig::default(), deps);
+
+        actor
+            .handle_command(AppCommand::ToggleRecording {
+                origin: CommandOrigin::CliControl,
+            })
+            .await
+            .expect("start should succeed");
+
+        let session_id = match actor.state {
+            AppState::Recording(glossa_core::RecordingState { session_id }) => session_id,
+            ref state => panic!("expected recording state, got {state:?}"),
+        };
+
+        actor
+            .handle_internal_event(InternalEvent::MaxDurationReached { session_id })
+            .await
+            .expect("max duration handling should succeed");
+
+        assert_eq!(handle.status().state, AppStateKind::Processing);
+        assert_eq!(
+            *lifecycle
+                .stop_calls
+                .lock()
+                .expect("mutex should not be poisoned"),
+            vec![session_id]
+        );
+        assert!(
+            lifecycle
+                .abort_calls
+                .lock()
+                .expect("mutex should not be poisoned")
+                .is_empty(),
+            "max duration should stop, not abort"
+        );
+        assert_eq!(
+            *cue_events.lock().expect("mutex should not be poisoned"),
+            vec!["play-start-cue", "play-stop-cue"]
+        );
+        assert!(
+            actor.max_duration_abort.is_none(),
+            "auto-stop timer should be cleared after stop"
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_max_duration_event_should_be_ignored() {
+        let lifecycle = Arc::new(RecordingLifecycle::default());
+        let deps = AppDependencies {
+            audio_capture: Arc::new(TrackingAudioCapture {
+                lifecycle: Arc::clone(&lifecycle),
+            }),
+            trimmer: Arc::new(FakeTrimmer),
+            cue_player: Arc::new(FakeCuePlayer),
+            stt_client: Arc::new(FakeSttClient),
+            text_enhancer: Arc::new(NoopTextEnhancer),
+            clipboard: Arc::new(FakeClipboard),
+            paste: Arc::new(FakePaste),
+            tray: Arc::new(crate::ports::NullTrayPort),
+            temp_store: Arc::new(FakeTempStore),
+        };
+        let (mut actor, handle) = AppActor::new(AppConfig::default(), deps);
+
+        actor
+            .handle_command(AppCommand::ToggleRecording {
+                origin: CommandOrigin::CliControl,
+            })
+            .await
+            .expect("start should succeed");
+
+        let stale_session = SessionId::new();
+        actor
+            .handle_internal_event(InternalEvent::MaxDurationReached {
+                session_id: stale_session,
+            })
+            .await
+            .expect("stale max duration should be ignored");
+
+        assert_eq!(handle.status().state, AppStateKind::Recording);
+        assert!(
+            lifecycle
+                .stop_calls
+                .lock()
+                .expect("mutex should not be poisoned")
+                .is_empty(),
+            "stale max duration must not stop the current recording"
+        );
+    }
+
+    #[tokio::test]
+    async fn manual_stop_should_clear_max_duration_timer() {
+        let lifecycle = Arc::new(RecordingLifecycle::default());
+        let deps = AppDependencies {
+            audio_capture: Arc::new(TrackingAudioCapture {
+                lifecycle: Arc::clone(&lifecycle),
+            }),
+            trimmer: Arc::new(FakeTrimmer),
+            cue_player: Arc::new(FakeCuePlayer),
+            stt_client: Arc::new(FakeSttClient),
+            text_enhancer: Arc::new(NoopTextEnhancer),
+            clipboard: Arc::new(FakeClipboard),
+            paste: Arc::new(FakePaste),
+            tray: Arc::new(crate::ports::NullTrayPort),
+            temp_store: Arc::new(FakeTempStore),
+        };
+        let (mut actor, _handle) = AppActor::new(AppConfig::default(), deps);
+
+        actor
+            .handle_command(AppCommand::ToggleRecording {
+                origin: CommandOrigin::CliControl,
+            })
+            .await
+            .expect("start should succeed");
+        assert!(
+            actor.max_duration_abort.is_some(),
+            "timer should be armed while recording"
+        );
+
+        actor
+            .handle_command(AppCommand::ToggleRecording {
+                origin: CommandOrigin::CliControl,
+            })
+            .await
+            .expect("stop should succeed");
+        assert!(
+            actor.max_duration_abort.is_none(),
+            "timer should be cleared after manual stop"
+        );
+        assert_eq!(
+            lifecycle
+                .stop_calls
+                .lock()
+                .expect("mutex should not be poisoned")
+                .len(),
+            1
         );
     }
 }

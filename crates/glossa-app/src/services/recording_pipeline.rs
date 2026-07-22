@@ -27,6 +27,10 @@ pub enum InternalEvent {
         session_id: SessionId,
         outcome: CycleOutcome,
     },
+    /// Fired when a recording hits `audio.max_duration_sec` and should auto-stop.
+    MaxDurationReached {
+        session_id: SessionId,
+    },
 }
 
 /// Final outcome of a capture/transcription/paste cycle.

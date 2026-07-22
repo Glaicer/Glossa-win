@@ -50,7 +50,7 @@ trim_threshold = 500
 # Sets the minimum accepted recording duration in milliseconds; options: positive integer values.
 min_duration_ms = 150
 # Sets the maximum recording duration in seconds; options: positive integer values.
-max_duration_sec = 120
+max_duration_sec = 1200
 # Keeps captured audio files after each cycle for debugging; options: true, false.
 persist_audio = false
 
@@ -84,6 +84,6 @@ stop_sound = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\sounds\\stop.wa
 
 [logging]
 # Sets the minimum log verbosity; options typically include "trace", "debug", "info", "warn", "error".
-level = "info"
+level = "warn"
 # Enables console/stderr logging; options: true, false. Legacy key `journal` is still accepted.
 console = true

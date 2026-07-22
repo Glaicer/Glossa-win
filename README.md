@@ -135,7 +135,7 @@ socket_path = "auto"   # loopback TCP: 127.0.0.1:47823
 
 ```toml
 [logging]
-level = "info"
+level = "warn"
 console = true         # legacy alias: journal
 ```
 

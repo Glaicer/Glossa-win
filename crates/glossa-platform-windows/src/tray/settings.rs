@@ -567,7 +567,7 @@ channels = 1
 trim_silence = true
 trim_threshold = 500
 min_duration_ms = 150
-max_duration_sec = 120
+max_duration_sec = 1200
 persist_audio = false
 
 [paste]
@@ -587,7 +587,7 @@ start_sound = "C:/glossa/start.wav"
 stop_sound = "C:/glossa/stop.wav"
 
 [logging]
-level = "info"
+level = "warn"
 console = true
 
 [LLM]
@@ -649,7 +649,7 @@ channels = 1
 trim_silence = true
 trim_threshold = 500
 min_duration_ms = 150
-max_duration_sec = 120
+max_duration_sec = 1200
 persist_audio = false
 
 [paste]
@@ -669,7 +669,7 @@ start_sound = "C:/glossa/start.wav"
 stop_sound = "C:/glossa/stop.wav"
 
 [logging]
-level = "info"
+level = "warn"
 console = true
 
 [LLM]
@@ -725,7 +725,7 @@ channels = 1
 trim_silence = true
 trim_threshold = 500
 min_duration_ms = 150
-max_duration_sec = 120
+max_duration_sec = 1200
 persist_audio = false
 
 [paste]
@@ -745,7 +745,7 @@ start_sound = "C:/glossa/start.wav"
 stop_sound = "C:/glossa/stop.wav"
 
 [logging]
-level = "info"
+level = "warn"
 console = true
 
 [LLM]

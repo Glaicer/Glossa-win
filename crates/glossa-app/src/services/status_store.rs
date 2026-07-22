@@ -17,8 +17,11 @@ impl StatusStore {
     }
 
     /// Updates the latest status snapshot.
+    ///
+    /// Uses `send_replace` so the snapshot advances even when no subscriber is
+    /// currently attached (e.g. unit tests, or before the daemon wires watchers).
     pub fn update(&self, status: AppStatus) {
-        let _ = self.tx.send(status);
+        self.tx.send_replace(status);
     }
 
     /// Returns the most recent status snapshot.
