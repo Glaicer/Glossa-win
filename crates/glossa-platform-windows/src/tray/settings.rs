@@ -1,11 +1,13 @@
-use std::{collections::BTreeSet, env, fs, path::Path};
+use std::{collections::BTreeSet, fs, path::Path};
 
 use glossa_app::AppError;
 use glossa_core::{AppConfig, InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
 
-use crate::setup::set_user_environment_variable;
+use crate::credentials::{delete_user_environment_variable, install_default_store, store_secret};
+use crate::setup::api_key_env_name;
 
-/// User env var used when an LLM API key is pasted in Settings (never written literally to config).
+/// Logical secret name used when an LLM API key is pasted in Settings
+/// (never written literally to config; stored in Credential Manager).
 pub(super) const LLM_API_KEY_ENV: &str = "GLOSSA_LLM_API_KEY";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,6 +222,8 @@ pub(super) fn write_settings_to_config(
     path: &Path,
     settings: &mut SettingsValues,
 ) -> Result<(), AppError> {
+    settings.provider_api_key =
+        secure_provider_api_key_for_config(&settings.provider_api_key, settings.provider_kind)?;
     settings.llm_api_key = secure_llm_api_key_for_config(&settings.llm_api_key)?;
     let source = fs::read_to_string(path)
         .map_err(|error| AppError::io("failed to read config.toml", error))?;
@@ -227,57 +231,86 @@ pub(super) fn write_settings_to_config(
     fs::write(path, updated).map_err(|error| AppError::io("failed to write config.toml", error))
 }
 
+/// Turns a pasted provider API key into a config-safe value.
+///
+/// - empty → empty (allowed for openai-compatible)
+/// - `env:NAME` / `cred:NAME` → kept as-is
+/// - any other text (pasted secret) → Credential Manager under the provider key name,
+///   config gets `cred:NAME`
+pub(super) fn secure_provider_api_key_for_config(
+    entered: &str,
+    kind: ProviderKind,
+) -> Result<String, AppError> {
+    persist_secret_for_config(entered, api_key_env_name(kind), "provider")
+}
+
 /// Turns a pasted LLM API key into a config-safe value.
 ///
 /// - empty → empty (local models with no auth)
-/// - `env:NAME` → kept as-is
-/// - any other text (pasted secret) → stored in the user environment as
-///   [`LLM_API_KEY_ENV`], config gets `env:GLOSSA_LLM_API_KEY`
+/// - `env:NAME` / `cred:NAME` → kept as-is
+/// - any other text (pasted secret) → Credential Manager as [`LLM_API_KEY_ENV`],
+///   config gets `cred:GLOSSA_LLM_API_KEY`
 pub(super) fn secure_llm_api_key_for_config(entered: &str) -> Result<String, AppError> {
-    match plan_llm_api_key_persist(entered)? {
-        LlmApiKeyPersist::Empty => Ok(String::new()),
-        LlmApiKeyPersist::EnvRef(value) => Ok(value),
-        LlmApiKeyPersist::StoreSecret { env_name, secret } => {
-            set_user_environment_variable(env_name, &secret)?;
-            // So a same-process restart resolves the key without requiring a full logoff.
-            // SAFETY: settings save path; tray is single-threaded for this call.
-            unsafe {
-                env::set_var(env_name, &secret);
-            }
-            Ok(format!("env:{env_name}"))
+    persist_secret_for_config(entered, LLM_API_KEY_ENV, "LLM")
+}
+
+fn persist_secret_for_config(
+    entered: &str,
+    default_name: &str,
+    label: &str,
+) -> Result<String, AppError> {
+    match plan_secret_persist(entered, default_name, label)? {
+        SecretPersist::Empty => Ok(String::new()),
+        SecretPersist::Ref(value) => Ok(value),
+        SecretPersist::StoreSecret { name, secret } => {
+            install_default_store();
+            store_secret(&name, &secret)?;
+            let _ = delete_user_environment_variable(&name);
+            Ok(format!("cred:{name}"))
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum LlmApiKeyPersist {
+pub(super) enum SecretPersist {
     Empty,
-    EnvRef(String),
-    StoreSecret {
-        env_name: &'static str,
-        secret: String,
-    },
+    Ref(String),
+    StoreSecret { name: String, secret: String },
 }
 
-/// Pure planning step for LLM API key persistence (unit-tested without registry writes).
-pub(super) fn plan_llm_api_key_persist(entered: &str) -> Result<LlmApiKeyPersist, AppError> {
+/// Pure planning step for API key persistence (unit-tested without Win32).
+pub(super) fn plan_secret_persist(
+    entered: &str,
+    default_name: &str,
+    label: &str,
+) -> Result<SecretPersist, AppError> {
     let trimmed = entered.trim();
     if trimmed.is_empty() {
-        return Ok(LlmApiKeyPersist::Empty);
+        return Ok(SecretPersist::Empty);
     }
     if let Some(name) = trimmed.strip_prefix("env:") {
         if name.is_empty() {
-            return Err(AppError::message(
-                "LLM API key env source must not be empty (use env:VARIABLE_NAME).",
-            ));
+            return Err(AppError::message(format!(
+                "{label} API key env source must not be empty (use env:VARIABLE_NAME)."
+            )));
         }
-        return Ok(LlmApiKeyPersist::EnvRef(format!("env:{name}")));
+        return Ok(SecretPersist::Ref(format!("env:{name}")));
     }
-    Ok(LlmApiKeyPersist::StoreSecret {
-        env_name: LLM_API_KEY_ENV,
+    if let Some(name) = trimmed.strip_prefix("cred:") {
+        if name.is_empty() {
+            return Err(AppError::message(format!(
+                "{label} API key cred source must not be empty (use cred:NAME)."
+            )));
+        }
+        return Ok(SecretPersist::Ref(format!("cred:{name}")));
+    }
+    Ok(SecretPersist::StoreSecret {
+        name: default_name.to_owned(),
         secret: trimmed.to_owned(),
     })
 }
+
+
 
 /// Resolves what to keep when the API key field is left blank in the LLM dialog.
 #[must_use]
@@ -497,10 +530,16 @@ impl SettingUpdate {
 mod tests {
     use glossa_core::{InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
 
+    use glossa_app::AppError;
+
     use super::{
         apply_settings_to_config, keep_or_replace_llm_api_key, llm_api_key_is_available,
-        plan_llm_api_key_persist, quoted, LlmApiKeyPersist, SettingsValues, LLM_API_KEY_ENV,
+        plan_secret_persist, quoted, SecretPersist, SettingsValues, LLM_API_KEY_ENV,
     };
+
+    fn plan_llm_api_key_persist(entered: &str) -> Result<SecretPersist, AppError> {
+        plan_secret_persist(entered, LLM_API_KEY_ENV, "LLM")
+    }
 
     fn valid_config_source() -> String {
         r#"[input]
@@ -753,23 +792,28 @@ api_key = "env:LLM_KEY"
     }
 
     #[test]
-    fn plan_llm_api_key_should_store_pasted_secret_in_fixed_env_var() {
+    fn plan_llm_api_key_should_store_pasted_secret_as_credential() {
         let plan = plan_llm_api_key_persist("  sk-or-v1-secret  ").expect("plan");
         assert_eq!(
             plan,
-            LlmApiKeyPersist::StoreSecret {
-                env_name: LLM_API_KEY_ENV,
+            SecretPersist::StoreSecret {
+                name: LLM_API_KEY_ENV.into(),
                 secret: "sk-or-v1-secret".into(),
             }
         );
     }
 
     #[test]
-    fn plan_llm_api_key_should_keep_env_refs() {
+    fn plan_llm_api_key_should_keep_env_and_cred_refs() {
         let plan = plan_llm_api_key_persist("env:OPENROUTER_API_KEY").expect("plan");
         assert_eq!(
             plan,
-            LlmApiKeyPersist::EnvRef("env:OPENROUTER_API_KEY".into())
+            SecretPersist::Ref("env:OPENROUTER_API_KEY".into())
+        );
+        let plan = plan_llm_api_key_persist("cred:GLOSSA_LLM_API_KEY").expect("plan");
+        assert_eq!(
+            plan,
+            SecretPersist::Ref("cred:GLOSSA_LLM_API_KEY".into())
         );
     }
 
@@ -777,7 +821,7 @@ api_key = "env:LLM_KEY"
     fn plan_llm_api_key_should_treat_blank_as_empty() {
         assert_eq!(
             plan_llm_api_key_persist("   ").expect("plan"),
-            LlmApiKeyPersist::Empty
+            SecretPersist::Empty
         );
     }
 
@@ -785,6 +829,12 @@ api_key = "env:LLM_KEY"
     fn plan_llm_api_key_should_reject_empty_env_name() {
         let err = plan_llm_api_key_persist("env:").expect_err("empty env name");
         assert!(err.to_string().contains("env"));
+    }
+
+    #[test]
+    fn plan_llm_api_key_should_reject_empty_cred_name() {
+        let err = plan_llm_api_key_persist("cred:").expect_err("empty cred name");
+        assert!(err.to_string().contains("cred"));
     }
 
     #[test]

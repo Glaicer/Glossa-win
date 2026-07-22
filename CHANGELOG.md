@@ -14,7 +14,8 @@ First release of Glossa for Windows — a headless speech-to-text daemon for Win
 - Background daemon with system tray status icons (idle / recording / processing) and light/dark themes.
 - Global hotkey input (`input.backend = "hotkey"`) in toggle or push-to-talk mode (default `Ctrl+Alt+Space`).
 - Interactive hotkey picker from setup and the tray (“Change shortcut…”).
-- First-run setup wizard (`glossa setup`, also on first launch when no config exists): installs binary and assets, writes config, stores the STT API key as a user environment variable, optional start-at-login, optional start daemon now.
+- First-run setup wizard (`glossa setup`, also on first launch when no config exists): installs binary and assets, writes config, stores the STT API key in Windows Credential Manager, optional start-at-login, optional start daemon now.
+- API keys use `cred:NAME` (Credential Manager). On daemon start, legacy keys in `HKCU\Environment` / process env referenced by `env:NAME` are migrated into Credential Manager and cleared from the user environment.
 - Full Settings dialog from the tray (input, provider, paste, theme, LLM enhancer, and related options).
 - Native Windows clipboard and paste (`Ctrl+V`, `Ctrl+Shift+V`, or `Shift+Insert`); restores previous clipboard contents after pasting.
 - STT providers: Groq, OpenAI, and other OpenAI-compatible endpoints (including self-hosted).

@@ -5,8 +5,9 @@ mod install;
 mod paths;
 mod wizard;
 
-pub use install::{apply_setup, build_config_toml, SetupAnswers, SetupResult};
-pub(crate) use install::set_user_environment_variable;
+pub use install::{
+    api_key_env_name, apply_setup, build_config_toml, SetupAnswers, SetupResult,
+};
 pub use paths::{
     default_config_path, default_install_dir, is_installed, ConfigPathStatus,
 };

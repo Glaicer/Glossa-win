@@ -4,9 +4,8 @@ mod llm;
 mod logging;
 mod paste;
 mod provider;
+mod secret;
 mod ui;
-
-use std::env;
 
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
@@ -17,6 +16,7 @@ pub use self::llm::LlmConfig;
 pub use self::logging::{LogLevel, LoggingConfig};
 pub use self::paste::PasteConfig;
 pub use self::provider::ProviderConfig;
+pub use self::secret::{set_credential_store, CredentialStore, SecretSource};
 pub use self::ui::{UiConfig, UiTheme};
 use crate::{AppStateKind, CoreError, ProviderKind};
 
@@ -122,69 +122,6 @@ impl SocketPath {
 #[serde(rename_all = "lowercase")]
 pub enum AutoValue {
     Auto,
-}
-
-/// Secret source for API tokens and similar credentials.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub enum SecretSource {
-    Empty,
-    Literal(String),
-    Env(String),
-}
-
-impl SecretSource {
-    /// Returns a redacted description suitable for logs and diagnostics.
-    #[must_use]
-    pub fn describe(&self) -> String {
-        match self {
-            Self::Empty => "empty".into(),
-            Self::Literal(_) => "literal".into(),
-            Self::Env(name) => format!("env:{name}"),
-        }
-    }
-
-    /// Resolves the secret into a string value.
-    pub fn resolve(&self) -> Result<String, CoreError> {
-        match self {
-            Self::Empty => Ok(String::new()),
-            Self::Literal(value) => Ok(value.clone()),
-            Self::Env(name) => env::var(name).map_err(|_| CoreError::MissingSecret {
-                secret_source: format!("env:{name}"),
-            }),
-        }
-    }
-}
-
-impl TryFrom<String> for SecretSource {
-    type Error = CoreError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if let Some(name) = value.strip_prefix("env:") {
-            if name.is_empty() {
-                return Err(CoreError::InvalidConfig(
-                    "provider.api_key env source must not be empty".into(),
-                ));
-            }
-            return Ok(Self::Env(name.to_string()));
-        }
-
-        if value.is_empty() {
-            return Ok(Self::Empty);
-        }
-
-        Ok(Self::Literal(value))
-    }
-}
-
-impl From<SecretSource> for String {
-    fn from(value: SecretSource) -> Self {
-        match value {
-            SecretSource::Empty => String::new(),
-            SecretSource::Literal(inner) => inner,
-            SecretSource::Env(inner) => format!("env:{inner}"),
-        }
-    }
 }
 
 impl Default for AppConfig {

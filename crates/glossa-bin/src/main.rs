@@ -9,6 +9,9 @@ use crate::cli::{Cli, Command};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Credential Manager backend for `cred:NAME` secret sources (and doctor/settings).
+    glossa_platform_windows::credentials::install_default_store();
+
     let cli = Cli::parse();
 
     match cli.command {

@@ -67,7 +67,8 @@ cargo build --release
 cargo test --workspace
 
 # Run daemon
-$env:GROQ_API_KEY = "..."
+# API keys are stored in Windows Credential Manager (setup/settings), or migrated
+# from a session/user env var on first daemon start when config uses env:NAME.
 .\target\release\glossa.exe --config $env:APPDATA\glossa\config.toml daemon
 
 # Control

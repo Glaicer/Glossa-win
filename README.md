@@ -49,7 +49,7 @@ On first run (when no config exists), Glossa opens a **setup wizard** that insta
 
 - Copies the binary and tray/sound assets to `%LOCALAPPDATA%\glossa`
 - Writes `%APPDATA%\glossa\config.toml`
-- Stores your speach-to-text API key as a user environment variable
+- Stores your speech-to-text API key in Windows Credential Manager
 - Optionally enables start at login
 - Optionally starts the daemon immediately
 
@@ -81,7 +81,8 @@ powershell -ExecutionPolicy Bypass -File contrib\windows\install.ps1
 Then set your API key and start the daemon:
 
 ```powershell
-[System.Environment]::SetEnvironmentVariable("GROQ_API_KEY", "gsk_...", "User")
+# Prefer the setup wizard, or set a session env var (daemon migrates it into Credential Manager):
+$env:GROQ_API_KEY = "gsk_..."
 & "$env:LOCALAPPDATA\glossa\glossa.exe" --config "$env:APPDATA\glossa\config.toml" daemon
 
 # Optional: start at login

@@ -2,6 +2,7 @@
 
 pub mod clipboard;
 pub mod console;
+pub mod credentials;
 pub mod dialog;
 pub mod doctor;
 pub mod hotkey;

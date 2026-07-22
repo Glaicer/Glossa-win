@@ -9,17 +9,24 @@ use glossa_app::{ports::TrayPort, AppActor, AppDependencies};
 use glossa_audio::{CpalAudioCapture, CuePlayerBackend, WavSilenceTrimmer};
 use glossa_core::{AppConfig, LogLevel};
 use glossa_platform_windows::{
-    clipboard::NativeClipboard, paste::NativePasteBackend, temp::WindowsTempStore,
+    clipboard::NativeClipboard,
+    credentials::{install_default_store, migrate_secrets_from_environment},
+    paste::NativePasteBackend,
+    temp::WindowsTempStore,
     tray::BestEffortTrayPort,
 };
 use glossa_stt::{build_client, build_text_enhancer};
 
-/// Loads the Glossa config from disk and validates it.
+/// Loads the Glossa config from disk, installs the credential store, and migrates
+/// any API keys still living in `HKCU\Environment` into Credential Manager.
 pub async fn load_config(path: &PathBuf) -> anyhow::Result<AppConfig> {
     let content = fs::read_to_string(path)
         .await
         .with_context(|| format!("failed to read config from {}", path.display()))?;
-    let config = AppConfig::from_toml_str(&content)?;
+    let mut config = AppConfig::from_toml_str(&content)?;
+    install_default_store();
+    migrate_secrets_from_environment(path, &mut config)
+        .with_context(|| format!("failed to migrate secrets for {}", path.display()))?;
     Ok(config)
 }
 

@@ -10,6 +10,10 @@ use glossa_core::{
     UiConfig, UiTheme,
 };
 
+use crate::credentials::{
+    delete_user_environment_variable, install_default_store, store_secret,
+};
+
 use super::assets::EMBEDDED_ASSETS;
 use super::paths::{default_config_path, default_install_dir};
 
@@ -73,7 +77,7 @@ pub fn default_model(kind: ProviderKind) -> &'static str {
     }
 }
 
-/// Environment variable name used for the provider API key.
+/// Logical secret name used for the provider API key (`cred:NAME` / legacy `env:NAME`).
 #[must_use]
 pub fn api_key_env_name(kind: ProviderKind) -> &'static str {
     match kind {
@@ -125,7 +129,7 @@ pub fn build_app_config(answers: &SetupAnswers, install_dir: &Path) -> Result<Ap
     let api_key = if answers.api_key.trim().is_empty() {
         SecretSource::Empty
     } else {
-        SecretSource::Env(env_name.to_owned())
+        SecretSource::Credential(env_name.to_owned())
     };
 
     let utf8 = |path: PathBuf| -> Result<camino::Utf8PathBuf, AppError> {
@@ -226,12 +230,10 @@ pub fn apply_setup(answers: &SetupAnswers) -> Result<SetupResult, AppError> {
 
     let env_name = api_key_env_name(answers.provider);
     if !answers.api_key.trim().is_empty() {
-        set_user_environment_variable(env_name, answers.api_key.trim())?;
-        // So "start now" in this process can resolve env:GROQ_API_KEY immediately.
-        // SAFETY: single-threaded setup path; no other threads rely on this env yet.
-        unsafe {
-            env::set_var(env_name, answers.api_key.trim());
-        }
+        install_default_store();
+        store_secret(env_name, answers.api_key.trim())?;
+        // Clear any leftover user-env copy from older Glossa versions.
+        let _ = delete_user_environment_variable(env_name);
     }
 
     if answers.autostart {
@@ -339,84 +341,6 @@ fn create_startup_shortcut(exe: &Path, config: &Path) -> Result<(), AppError> {
     }
 }
 
-/// Writes a user-scoped environment variable (`HKCU\Environment`) and broadcasts the change.
-pub(crate) fn set_user_environment_variable(name: &str, value: &str) -> Result<(), AppError> {
-    #[cfg(windows)]
-    {
-        set_user_environment_variable_windows(name, value)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (name, value);
-        Err(AppError::message(
-            "setting user environment variables is only supported on Windows",
-        ))
-    }
-}
-
-#[cfg(windows)]
-fn set_user_environment_variable_windows(name: &str, value: &str) -> Result<(), AppError> {
-    use std::os::windows::ffi::OsStrExt;
-
-    fn to_wide(value: &str) -> Vec<u16> {
-        std::ffi::OsStr::new(value)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    }
-
-    let name_wide = to_wide(name);
-    let value_wide = to_wide(value);
-    let sub_key = to_wide("Environment");
-
-    // SAFETY: Registry APIs receive valid NUL-terminated wide strings and a stack-allocated handle.
-    unsafe {
-        let mut key = std::ptr::null_mut();
-        let status = windows_sys::Win32::System::Registry::RegOpenKeyExW(
-            windows_sys::Win32::System::Registry::HKEY_CURRENT_USER,
-            sub_key.as_ptr(),
-            0,
-            windows_sys::Win32::System::Registry::KEY_SET_VALUE,
-            &mut key,
-        );
-        if status != windows_sys::Win32::Foundation::ERROR_SUCCESS {
-            return Err(AppError::message(format!(
-                "failed to open HKCU\\Environment (error {status})"
-            )));
-        }
-
-        let bytes = (value_wide.len() * 2) as u32;
-        let status = windows_sys::Win32::System::Registry::RegSetValueExW(
-            key,
-            name_wide.as_ptr(),
-            0,
-            windows_sys::Win32::System::Registry::REG_SZ,
-            value_wide.as_ptr().cast::<u8>(),
-            bytes,
-        );
-        let _ = windows_sys::Win32::System::Registry::RegCloseKey(key);
-        if status != windows_sys::Win32::Foundation::ERROR_SUCCESS {
-            return Err(AppError::message(format!(
-                "failed to set user environment variable {name} (error {status})"
-            )));
-        }
-
-        // Notify other processes that environment variables changed.
-        let env_wide = to_wide("Environment");
-        windows_sys::Win32::UI::WindowsAndMessaging::SendMessageTimeoutW(
-            windows_sys::Win32::UI::WindowsAndMessaging::HWND_BROADCAST,
-            windows_sys::Win32::UI::WindowsAndMessaging::WM_SETTINGCHANGE,
-            0,
-            env_wide.as_ptr() as isize,
-            windows_sys::Win32::UI::WindowsAndMessaging::SMTO_ABORTIFHUNG,
-            5000,
-            std::ptr::null_mut(),
-        );
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,13 +376,13 @@ mod tests {
     }
 
     #[test]
-    fn build_config_toml_should_reference_install_assets_and_env_key() {
+    fn build_config_toml_should_reference_install_assets_and_cred_key() {
         let mut answers = SetupAnswers::default();
         answers.api_key = "gsk_test".into();
         let install = PathBuf::from(r"C:\Users\test\AppData\Local\glossa");
         let toml = build_config_toml(&answers, &install).expect("toml");
         assert!(toml.contains("kind = \"groq\""));
-        assert!(toml.contains("api_key = \"env:GROQ_API_KEY\""));
+        assert!(toml.contains("api_key = \"cred:GROQ_API_KEY\""));
         assert!(toml.contains("whisper-large-v3-turbo"));
         assert!(
             toml.contains("toggle")
