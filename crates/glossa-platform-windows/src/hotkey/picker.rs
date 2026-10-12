@@ -1,6 +1,6 @@
 //! Key-capture hotkey picker control and modal prompt dialog.
 //!
-//! Displays shortcuts as chips (`[CTRL] + [ALT] + [SPACE]`) and records a
+//! Displays shortcuts as keycap buttons (`[CTRL] + [ALT] + [SPACE]`) and records a
 //! canonical config string (`Ctrl+Alt+Space`) when the user presses a combo.
 
 #![cfg(windows)]
@@ -13,11 +13,12 @@ use std::{
 };
 
 use windows_sys::Win32::{
-    Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM},
     Graphics::Gdi::{
-        BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect, GetStockObject,
-        InvalidateRect, SelectObject, SetBkMode, SetTextColor, DT_CENTER, DT_SINGLELINE,
-        DT_VCENTER, HBRUSH, HFONT, PAINTSTRUCT, TRANSPARENT,
+        BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect,
+        GetStockObject, GetTextExtentPoint32W, GetTextMetricsW, InvalidateRect, RoundRect,
+        SelectObject, SetBkMode, SetTextColor, DT_CENTER, DT_SINGLELINE, DT_VCENTER, HDC, HBRUSH,
+        HFONT, PAINTSTRUCT, PS_SOLID, TEXTMETRICW, TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
@@ -31,8 +32,8 @@ use windows_sys::Win32::{
             IDC_ARROW, MSG, SW_HIDE, SW_SHOW, SWP_NOZORDER, WM_COMMAND, WM_CREATE,
             WM_CTLCOLORSTATIC, WM_DESTROY, WM_ERASEBKGND, WM_GETDLGCODE, WM_KEYDOWN, WM_KEYUP,
             WM_KILLFOCUS, WM_LBUTTONDOWN, WM_NCPAINT, WM_PAINT, WM_SETFOCUS, WM_SETFONT,
-            WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN,
-            WS_TABSTOP, WS_VISIBLE,
+            WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSEXW, WS_CHILD, WS_CLIPCHILDREN, WS_TABSTOP,
+            WS_VISIBLE,
         },
     },
 };
@@ -41,7 +42,7 @@ use crate::dialog::DialogError;
 use crate::win_style::{
     activate_visual_styles, apply_titlebar_theme, center_window, create_body_font,
     create_header_font, ensure_common_controls, fit_window_to_client, outer_size_for_client,
-    to_wide, LIGHT_BG, LIGHT_EDIT_BG, LIGHT_TEXT, WINDOW_EX_STYLE, WINDOW_STYLE, rgb,
+    to_wide, LIGHT_BG, LIGHT_TEXT, WINDOW_EX_STYLE, WINDOW_STYLE, rgb,
 };
 
 use super::shortcut_parser::{
@@ -114,7 +115,7 @@ pub unsafe fn create_hotkey_picker(
         0,
         class_wide.as_ptr(),
         ptr::null(),
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | WS_CLIPCHILDREN,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPCHILDREN,
         x,
         y,
         w,
@@ -129,7 +130,7 @@ pub unsafe fn create_hotkey_picker(
     }
 
     let initial = normalize_initial(initial_config);
-    let bg_brush = CreateSolidBrush(LIGHT_EDIT_BG);
+    let bg_brush = CreateSolidBrush(LIGHT_BG);
     let focus_brush = CreateSolidBrush(FOCUS_BORDER);
     let border_brush = CreateSolidBrush(NORMAL_BORDER);
 
@@ -599,7 +600,7 @@ unsafe fn paint_picker(hwnd: HWND) {
             None,
             GetStockObject(windows_sys::Win32::Graphics::Gdi::DEFAULT_GUI_FONT) as HFONT,
             false,
-            CreateSolidBrush(LIGHT_EDIT_BG),
+            CreateSolidBrush(LIGHT_BG),
             false,
         )
     };
@@ -613,42 +614,6 @@ unsafe fn paint_picker(hwnd: HWND) {
         rect.right
     };
 
-    // Inner focus outline around the full control (chips + Reset).
-    if focused {
-        let pen_brush = CreateSolidBrush(FOCUS_BORDER);
-        // Draw a 2px inset rectangle via four thin fills.
-        let t = 2i32;
-        let top = RECT {
-            left: rect.left,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.top + t,
-        };
-        let bottom = RECT {
-            left: rect.left,
-            top: rect.bottom - t,
-            right: rect.right,
-            bottom: rect.bottom,
-        };
-        let left = RECT {
-            left: rect.left,
-            top: rect.top,
-            right: rect.left + t,
-            bottom: rect.bottom,
-        };
-        let right = RECT {
-            left: rect.right - t,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.bottom,
-        };
-        FillRect(hdc, &top, pen_brush);
-        FillRect(hdc, &bottom, pen_brush);
-        FillRect(hdc, &left, pen_brush);
-        FillRect(hdc, &right, pen_brush);
-        DeleteObject(pen_brush);
-    }
-
     // Prefer live key-down preview; otherwise committed config chips; else focus hint.
     let (display, is_hint) = if let Some(preview) = live_preview.filter(|s| !s.is_empty()) {
         (preview, false)
@@ -660,39 +625,39 @@ unsafe fn paint_picker(hwnd: HWND) {
         (String::new(), false)
     };
 
-    let text_color = if is_hint {
-        rgb(120, 120, 120)
-    } else {
-        LIGHT_TEXT
-    };
-
     SetBkMode(hdc, TRANSPARENT as i32);
-    SetTextColor(hdc, text_color);
-    let old_font = if !font.is_null() {
-        SelectObject(hdc, font)
-    } else {
-        ptr::null_mut()
-    };
 
-    let mut wide = to_wide(&display);
-    // DrawTextW does not need the trailing NUL in the count.
-    let len = wide.len().saturating_sub(1) as i32;
-    let mut text_rect = RECT {
+    let area = RECT {
         left: rect.left + 8,
         top: rect.top,
         right: text_right - 8,
         bottom: rect.bottom,
     };
-    DrawTextW(
-        hdc,
-        wide.as_mut_ptr(),
-        len,
-        &mut text_rect,
-        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
-    );
 
-    if !old_font.is_null() {
-        SelectObject(hdc, old_font);
+    // Chips for shortcut combos; the hint and over-wide combos stay plain text.
+    if is_hint || !draw_keycaps(hdc, &display, font, area) {
+        SetTextColor(hdc, if is_hint { rgb(120, 120, 120) } else { LIGHT_TEXT });
+        let old_font = if !font.is_null() {
+            SelectObject(hdc, font)
+        } else {
+            ptr::null_mut()
+        };
+
+        let mut wide = to_wide(&display);
+        // DrawTextW does not need the trailing NUL in the count.
+        let len = wide.len().saturating_sub(1) as i32;
+        let mut text_rect = area;
+        DrawTextW(
+            hdc,
+            wide.as_mut_ptr(),
+            len,
+            &mut text_rect,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+        );
+
+        if !old_font.is_null() {
+            SelectObject(hdc, old_font);
+        }
     }
 
     // If we created a temporary brush for null state, free it.
@@ -701,6 +666,145 @@ unsafe fn paint_picker(hwnd: HWND) {
     }
 
     EndPaint(hwnd, &ps);
+}
+
+const KEYCAP_PAD_X: i32 = 9;
+const KEYCAP_MIN_W: i32 = 24;
+/// Chip ↔ "+" spacing on each side of the separator.
+const KEYCAP_GAP: i32 = 5;
+const SEPARATOR_COLOR: COLORREF = rgb(120, 120, 120);
+
+/// Draws `display` (`[CTRL] + [ALT] + [P]`) as keycap-style buttons centered in
+/// `area`. Returns false when the chips would not fit, so the caller can fall
+/// back to plain text.
+unsafe fn draw_keycaps(hdc: HDC, display: &str, font: HFONT, area: RECT) -> bool {
+    let labels: Vec<String> = display
+        .split(" + ")
+        .map(|token| {
+            token
+                .trim()
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .to_owned()
+        })
+        .filter(|label| !label.is_empty())
+        .collect();
+    if labels.is_empty() {
+        return false;
+    }
+
+    let old_font = if font.is_null() {
+        ptr::null_mut()
+    } else {
+        SelectObject(hdc, font)
+    };
+    let drawn = draw_keycap_chips(hdc, &labels, area);
+    if !old_font.is_null() {
+        SelectObject(hdc, old_font);
+    }
+    drawn
+}
+
+unsafe fn draw_keycap_chips(hdc: HDC, labels: &[String], area: RECT) -> bool {
+    let mut metrics = std::mem::zeroed::<TEXTMETRICW>();
+    if GetTextMetricsW(hdc, &mut metrics) == 0 {
+        return false;
+    }
+
+    let mut chip_widths = Vec::with_capacity(labels.len());
+    let mut total = 0i32;
+    for label in labels {
+        let wide = to_wide(label);
+        let mut size = SIZE { cx: 0, cy: 0 };
+        if GetTextExtentPoint32W(
+            hdc,
+            wide.as_ptr(),
+            wide.len().saturating_sub(1) as i32,
+            &mut size,
+        ) == 0
+        {
+            return false;
+        }
+        let chip_w = (size.cx + KEYCAP_PAD_X * 2).max(KEYCAP_MIN_W);
+        chip_widths.push(chip_w);
+        total += chip_w;
+    }
+
+    let mut plus = to_wide("+");
+    let mut plus_size = SIZE { cx: 0, cy: 0 };
+    if GetTextExtentPoint32W(hdc, plus.as_ptr(), 1, &mut plus_size) == 0 {
+        return false;
+    }
+    let sep_w = plus_size.cx + KEYCAP_GAP * 2;
+    total += sep_w * (labels.len() as i32 - 1).max(0);
+
+    let area_w = area.right - area.left;
+    let area_h = area.bottom - area.top;
+    if total > area_w || area_h < 16 {
+        return false;
+    }
+
+    let chip_h = (metrics.tmHeight + 8).min(area_h - 6);
+    let chip_y = area.top + (area_h - chip_h) / 2;
+    let mut x = area.left + (area_w - total) / 2;
+
+    let pen = CreatePen(PS_SOLID, 1, NORMAL_BORDER);
+    let fill = CreateSolidBrush(LIGHT_BG);
+    let old_pen = SelectObject(hdc, pen);
+    let old_brush = SelectObject(hdc, fill);
+
+    for (index, label) in labels.iter().enumerate() {
+        if index > 0 {
+            let mut sep_rect = RECT {
+                left: x,
+                top: area.top,
+                right: x + sep_w,
+                bottom: area.bottom,
+            };
+            SetTextColor(hdc, SEPARATOR_COLOR);
+            DrawTextW(
+                hdc,
+                plus.as_mut_ptr(),
+                1,
+                &mut sep_rect,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+            );
+            x += sep_w;
+        }
+
+        let chip_w = chip_widths[index];
+        let mut chip_rect = RECT {
+            left: x,
+            top: chip_y,
+            right: x + chip_w,
+            bottom: chip_y + chip_h,
+        };
+        RoundRect(
+            hdc,
+            chip_rect.left,
+            chip_rect.top,
+            chip_rect.right,
+            chip_rect.bottom,
+            10,
+            10,
+        );
+        SetTextColor(hdc, LIGHT_TEXT);
+        let mut wide = to_wide(label);
+        DrawTextW(
+            hdc,
+            wide.as_mut_ptr(),
+            wide.len().saturating_sub(1) as i32,
+            &mut chip_rect,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+        );
+        x += chip_w;
+    }
+
+    SelectObject(hdc, old_pen);
+    SelectObject(hdc, old_brush);
+    DeleteObject(pen);
+    DeleteObject(fill);
+    true
 }
 
 // ── Modal prompt dialog (tray → Change shortcut) ───────────────────────────
