@@ -233,6 +233,8 @@ See [AGENTS.md](AGENTS.md) for the full agent-oriented architecture notes.
 
 Installed builds include `update.ps1` next to `glossa.exe` under `%LOCALAPPDATA%\glossa`. The updater downloads the versioned `glossa-update.ps1` and `sha256sums.txt` from the latest GitHub release before installing `glossa-windows-x86_64.zip`.
 
+For a Windows-hosted build, run **Windows release artifacts** from the repository's GitHub Actions tab on the intended release commit. The manually triggered workflow tests and lints the workspace, runs the packager using the Cargo package version, verifies the binary version, and uploads all four release files as a workflow artifact. Download and verify those files before tagging the same commit and publishing a GitHub release; the workflow does not publish automatically.
+
 To package a release from a local build:
 
 ```powershell

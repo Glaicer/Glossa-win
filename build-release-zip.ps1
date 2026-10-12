@@ -42,7 +42,7 @@ Write-Log "Version: $Version"
 Write-Log "Building release binary..."
 Push-Location $ScriptDir
 try {
-    cargo build --release --package glossa-bin
+    cargo build --locked --release --package glossa-bin
     if ($LASTEXITCODE -ne 0) {
         Die "cargo build failed with exit code $LASTEXITCODE"
     }

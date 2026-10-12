@@ -7,9 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-13
+
 ### Added
 
 - On-screen recording/processing indicator (`ui.overlay`, on by default): a dark, click-through pill at the bottom-center of the primary display showing a microphone and a live waveform driven by the input level while recording, and a server icon with pulsing dots while processing. Failures are best-effort and never block dictation.
+- On-screen update progress indicator when installing an update from the tray.
+
+### Changed
+
+- Hotkey picker displays shortcuts as keycap buttons on the dialog background.
+- Updates run without a console window; updates, settings saves, and shortcut changes restart Glossa without a dismiss-to-continue dialog.
+
+### Fixed
+
+- Hide console windows when invoking Task Scheduler and creating or launching Startup shortcuts.
+- Refresh an outdated installed `update.ps1` from the embedded copy.
 
 ## [1.1.0] - 2026-07-21
 
@@ -50,5 +63,6 @@ First release of Glossa for Windows — a headless speech-to-text daemon for Win
 - GitHub-release self-updater (`glossa update` and tray **Update…**).
 - Shared core: CPAL capture, silence trim, WAV pipeline, pure state machine (`AppActor`).
 
+[1.2.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.0.0

@@ -1,0 +1,49 @@
+name: Windows release artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy
+      - name: Read release version
+        id: version
+        run: |
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = ($metadata.packages | Where-Object name -eq 'glossa-bin').version
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Test workspace
+        run: cargo test --locked --workspace
+      - name: Lint workspace
+        run: cargo clippy --locked --workspace --all-targets
+      - name: Package release
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: ./build-release-zip.ps1 -Version $env:RELEASE_VERSION
+      - name: Verify binary version
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $actual = & ./target/release/glossa.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($actual -ne "glossa $env:RELEASE_VERSION") {
+            throw "Unexpected binary version: $actual"
+          }
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: glossa-windows-${{ steps.version.outputs.version }}
+          path: target/release/github/${{ steps.version.outputs.version }}/
+          if-no-files-found: error
