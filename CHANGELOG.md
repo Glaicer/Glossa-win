@@ -5,6 +5,12 @@ All notable changes to Glossa for Windows will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- On-screen recording/processing indicator (`ui.overlay`, on by default): a dark, click-through pill at the bottom-center of the primary display showing a microphone and a live waveform driven by the input level while recording, and a server icon with pulsing dots while processing. Failures are best-effort and never block dictation.
+
 ## [1.1.0] - 2026-07-21
 
 ### Added

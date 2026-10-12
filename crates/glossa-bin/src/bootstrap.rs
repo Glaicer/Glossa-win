@@ -5,12 +5,13 @@ use anyhow::{anyhow, Context};
 use tokio::fs;
 use tracing_subscriber::EnvFilter;
 
-use glossa_app::{ports::TrayPort, AppActor, AppDependencies};
+use glossa_app::{ports::OverlayPort, ports::TrayPort, AppActor, AppDependencies};
 use glossa_audio::{CpalAudioCapture, CuePlayerBackend, WavSilenceTrimmer};
 use glossa_core::{AppConfig, LogLevel};
 use glossa_platform_windows::{
     clipboard::NativeClipboard,
     credentials::{install_default_store, migrate_secrets_from_environment},
+    overlay::BestEffortOverlayPort,
     paste::NativePasteBackend,
     temp::WindowsTempStore,
     tray::BestEffortTrayPort,
@@ -77,10 +78,16 @@ pub fn build_tray(config_path: &PathBuf, config: &AppConfig) -> Arc<BestEffortTr
     Arc::new(BestEffortTrayPort::new(config_path.clone(), config))
 }
 
+/// Builds the recording overlay shown while dictation is active.
+pub fn build_overlay(config: &AppConfig) -> Arc<BestEffortOverlayPort> {
+    Arc::new(BestEffortOverlayPort::new(config))
+}
+
 /// Builds the app actor and its dependencies from a validated config.
 pub fn build_actor(
     config: AppConfig,
     tray: Arc<dyn TrayPort>,
+    overlay: Arc<dyn OverlayPort>,
 ) -> anyhow::Result<(AppActor, glossa_app::AppHandle)> {
     let config = prepare_runtime_config(config);
     let temp_store = Arc::new(WindowsTempStore::from_audio_config(&config.audio)?);
@@ -97,6 +104,7 @@ pub fn build_actor(
         clipboard: Arc::new(NativeClipboard::new()),
         paste: Arc::new(NativePasteBackend::new()),
         tray,
+        overlay,
         temp_store,
     };
     Ok(AppActor::new(config, deps))

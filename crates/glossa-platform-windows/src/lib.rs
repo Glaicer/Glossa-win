@@ -7,6 +7,7 @@ pub mod dialog;
 pub mod doctor;
 pub mod hotkey;
 pub mod ipc;
+pub mod overlay;
 pub mod paste;
 pub mod service;
 pub mod setup;

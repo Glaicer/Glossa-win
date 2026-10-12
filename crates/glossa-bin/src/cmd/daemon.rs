@@ -12,7 +12,9 @@ use glossa_platform_windows::{
     setup::{run_setup_wizard, ConfigPathStatus, WizardOutcome},
 };
 
-use crate::bootstrap::{build_actor, build_tray, init_tracing, load_config, prepare_runtime_config};
+use crate::bootstrap::{
+    build_actor, build_overlay, build_tray, init_tracing, load_config, prepare_runtime_config,
+};
 
 const FATAL_ERROR_TITLE: &str = "Glossa fatal error";
 
@@ -70,6 +72,7 @@ async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> 
     config = prepare_runtime_config(config);
     info!(path = %config_path.display(), "starting glossa daemon");
     let tray = build_tray(&config_path, &config);
+    let overlay = build_overlay(&config);
 
     loop {
         let socket_path = config
@@ -82,7 +85,8 @@ async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> 
         let cli_enabled = config.control.enable_cli;
 
         let tray_port: std::sync::Arc<dyn glossa_app::ports::TrayPort> = tray.clone();
-        let (actor, handle) = build_actor(config, tray_port.clone())?;
+        let overlay_port: std::sync::Arc<dyn glossa_app::ports::OverlayPort> = overlay.clone();
+        let (actor, handle) = build_actor(config, tray_port.clone(), overlay_port)?;
         tray.bind_command_sender(handle.command_sender());
         let mut tasks: Vec<JoinHandle<()>> = Vec::new();
         let escape_status_rx = handle.subscribe();

@@ -21,6 +21,8 @@ impl Default for UiTheme {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiConfig {
     pub tray: bool,
+    #[serde(default = "default_overlay")]
+    pub overlay: bool,
     #[serde(default)]
     pub theme: UiTheme,
     pub idle_icon: Utf8PathBuf,
@@ -37,6 +39,7 @@ impl Default for UiConfig {
     fn default() -> Self {
         Self {
             tray: true,
+            overlay: true,
             theme: UiTheme::Light,
             idle_icon: "/path/to/idle.png".into(),
             recording_icon: "/path/to/recording.png".into(),
@@ -48,6 +51,10 @@ impl Default for UiConfig {
             stop_sound: "/path/to/stop.wav".into(),
         }
     }
+}
+
+fn default_overlay() -> bool {
+    true
 }
 
 impl UiConfig {

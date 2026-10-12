@@ -63,6 +63,8 @@ append_space = false
 [ui]
 # Enables best-effort tray integration; options: true, false.
 tray = true
+# Enables the on-screen recording/processing indicator; options: true, false.
+overlay = true
 # Selects which tray icon set to use; options: "light", "dark".
 theme = "dark"
 # Sets the tray icon shown while idle; options: absolute path to an icon file.

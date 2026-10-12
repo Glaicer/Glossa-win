@@ -155,6 +155,7 @@ pub fn build_app_config(answers: &SetupAnswers, install_dir: &Path) -> Result<Ap
         },
         ui: UiConfig {
             tray: true,
+            overlay: true,
             theme: answers.theme,
             idle_icon: utf8(tray.join("idle.png"))?,
             recording_icon: utf8(tray.join("recording.png"))?,
