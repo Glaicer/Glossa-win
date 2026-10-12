@@ -81,6 +81,17 @@ Cross-compiling from Linux requires a Windows target and linker (`x86_64-pc-wind
 
 ---
 
+## Updating the locally installed binary
+
+When a task is finished and before pushing, build and refresh the installed binary so the user can test it on their machine first. The user's copy lives at `%LOCALAPPDATA%\glossa\glossa.exe` (launched by the Startup-folder shortcut `Glossa.lnk` with `--config %APPDATA%\glossa\config.toml daemon`); do not touch the assets and config next to it.
+
+1. `cargo build --release`
+2. `.\target\release\glossa.exe ctl shutdown` (a running exe cannot be overwritten)
+3. `Copy-Item .\target\release\glossa.exe "$env:LOCALAPPDATA\glossa\glossa.exe" -Force`
+4. Restart the same way the Startup shortcut does: `Start-Process "$env:LOCALAPPDATA\glossa\glossa.exe" -ArgumentList '--config', "$env:APPDATA\glossa\config.toml", 'daemon'`, then confirm with `glossa status`.
+
+---
+
 ## Configuration notes
 
 - `input.backend = "hotkey"` enables the global hotkey backend (`"portal"` is a legacy alias)
