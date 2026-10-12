@@ -74,6 +74,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $staging "assets\sounds") | Out-Null
     Copy-Item $ReleaseExe (Join-Path $staging "glossa.exe") -Force
     Copy-Item $updateSrc (Join-Path $staging "update.ps1") -Force
+    Copy-Item (Join-Path $ScriptDir "LICENSE") (Join-Path $staging "LICENSE") -Force
     Copy-Item (Join-Path $traySrc "*") (Join-Path $staging "assets\tray") -Force
     Copy-Item (Join-Path $soundSrc "*") (Join-Path $staging "assets\sounds") -Force
     Set-Content -Path (Join-Path $staging "VERSION") -Value $Version -NoNewline -Encoding ascii

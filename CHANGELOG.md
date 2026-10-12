@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Hotkey picker displays shortcuts as keycap buttons on the dialog background.
 - Updates run without a console window; updates, settings saves, and shortcut changes restart Glossa without a dismiss-to-continue dialog.
+- License changed from Apache-2.0 to MIT; release ZIPs include the license text.
 
 ### Fixed
 
