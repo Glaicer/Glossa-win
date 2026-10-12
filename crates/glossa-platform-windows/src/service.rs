@@ -43,8 +43,15 @@ fn schtasks_restart() -> Result<(), AppError> {
 }
 
 fn schtasks_action(action: &str) -> Result<(), AppError> {
+    use std::os::windows::process::CommandExt;
+
+    // CREATE_NO_WINDOW: schtasks is console-attached and would flash a terminal
+    // window when spawned from the tray daemon.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
     let output = Command::new("schtasks")
         .args(["/End", "/TN", TASK_NAME])
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
 
     if action == "end" {
@@ -55,6 +62,7 @@ fn schtasks_action(action: &str) -> Result<(), AppError> {
 
     let output = Command::new("schtasks")
         .args(["/Run", "/TN", TASK_NAME])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|error| AppError::io("failed to invoke schtasks", error))?;
 
@@ -107,8 +115,14 @@ fn create_startup_shortcut() -> Result<(), AppError> {
             .replace('\'', "''"),
     );
 
+    // CREATE_NO_WINDOW: the daemon is a GUI-subsystem binary, so spawning the
+    // console-attached powershell.exe would otherwise pop up a console window.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    use std::os::windows::process::CommandExt;
+
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|error| AppError::io("failed to invoke powershell for Startup shortcut", error))?;
 

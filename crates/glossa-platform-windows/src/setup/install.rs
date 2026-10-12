@@ -327,8 +327,14 @@ fn create_startup_shortcut(exe: &Path, config: &Path) -> Result<(), AppError> {
         dir = working_dir.replace('\'', "''"),
     );
 
+    use std::os::windows::process::CommandExt;
+
+    // CREATE_NO_WINDOW: the daemon is a GUI-subsystem binary, so spawning the
+    // console-attached powershell.exe would otherwise pop up a console window.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|error| AppError::io("failed to invoke powershell for Startup shortcut", error))?;
 
