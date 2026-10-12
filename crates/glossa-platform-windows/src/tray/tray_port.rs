@@ -25,9 +25,10 @@ use glossa_app::{
 use glossa_core::{AppCommand, AppConfig, CommandOrigin, InputMode, UiConfig};
 
 use crate::dialog::{show_confirmation_dialog, show_info_dialog, show_message_dialog};
-use crate::hotkey::{format_shortcut_display, parse_shortcut, prompt_hotkey_dialog};
+use crate::hotkey::{parse_shortcut, prompt_hotkey_dialog};
+use crate::overlay::UpdateOverlay;
 use crate::service::restart_glossa_service;
-use crate::updater::{check_for_update, install_update, UpdaterStatus};
+use crate::updater::{check_for_update, install_update_with_progress, UpdaterStatus};
 use crate::winmsg::pump_thread_messages;
 
 use super::settings::{write_settings_to_config, SettingsValues};
@@ -436,10 +437,6 @@ impl TrayRuntime {
                 }
                 self.persist_settings();
                 self.request_restart();
-                let _ = show_info_dialog(
-                    "Glossa",
-                    "Settings saved.\nGlossa is restarting to apply them.",
-                );
             }
             Ok(None) => {}
             Err(error) => {
@@ -478,11 +475,6 @@ impl TrayRuntime {
         self.settings.shortcut = trimmed;
         self.persist_settings();
         self.request_restart();
-        let display = format_shortcut_display(&self.settings.shortcut);
-        let _ = show_info_dialog(
-            "Glossa",
-            &format!("Shortcut updated to {display}.\nGlossa is restarting to apply it."),
-        );
     }
 
     fn persist_settings(&mut self) {
@@ -534,14 +526,20 @@ impl TrayRuntime {
                     return;
                 }
 
-                match install_update() {
+                let overlay =
+                    UpdateOverlay::show(&format!("Updating Glossa to {}…", check_result.version));
+                let result = install_update_with_progress(&mut |percent| {
+                    overlay.set_progress(percent);
+                });
+                drop(overlay);
+
+                match result {
                     Ok(result) if result.status == UpdaterStatus::Updated => {
-                        let _ = show_info_dialog(
-                            "Update",
-                            &format!(
-                                "New version {} installed successfully.\nGlossa will restart shortly.",
-                                result.version
-                            ),
+                        // The updater's restart helper relaunches the daemon on
+                        // its own; no dialog so the restart is seamless.
+                        info!(
+                            version = %result.version,
+                            "update installed; Glossa restarts automatically"
                         );
                     }
                     Ok(result) if result.status == UpdaterStatus::UpToDate => {

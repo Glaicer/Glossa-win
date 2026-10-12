@@ -1,7 +1,9 @@
 use std::{
     env, fs,
+    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Output, Stdio},
+    thread,
 };
 
 use glossa_app::AppError;
@@ -9,6 +11,8 @@ use glossa_app::AppError;
 const UPDATER_SCRIPT_NAME: &str = "update.ps1";
 const STATUS_PREFIX: &str = "GLOSSA_UPDATE_STATUS=";
 const VERSION_PREFIX: &str = "GLOSSA_UPDATE_VERSION=";
+/// Stage progress emitted by the updater scripts (0-100).
+const PROGRESS_PREFIX: &str = "GLOSSA_UPDATE_PROGRESS=";
 const EMBEDDED_UPDATE_PS1: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contrib/windows/update.ps1"
@@ -67,8 +71,10 @@ where
 
 /// Resolves the installed bootstrapper script (`update.ps1`).
 ///
-/// If no script is present yet (older installs), writes the embedded bootstrapper
-/// next to the current executable or under `%LOCALAPPDATA%\glossa`.
+/// Refreshes the installed copy from the script embedded in this binary when it
+/// drifted (e.g. an install from an older release), so updater fixes ship with
+/// the executable. If no script is present yet, writes the embedded one next to
+/// the current executable or under `%LOCALAPPDATA%\glossa`.
 pub fn find_local_updater_script() -> Result<PathBuf, AppError> {
     let current_exe = env::current_exe()
         .map_err(|error| AppError::io("failed to resolve current executable", error))?;
@@ -77,6 +83,8 @@ pub fn find_local_updater_script() -> Result<PathBuf, AppError> {
     if let Ok(path) =
         find_local_updater_script_with(&current_exe, local_app_data.as_deref(), Path::is_file)
     {
+        // Best-effort refresh; keep going with the old script if the write fails.
+        let _ = fs::write(&path, EMBEDDED_UPDATE_PS1);
         return Ok(path);
     }
 
@@ -106,8 +114,15 @@ fn ensure_embedded_updater_script(
     Ok(dest)
 }
 
-fn run_powershell_script(script: &Path, args: &[&str]) -> Result<Output, AppError> {
-    Command::new("powershell.exe")
+/// CREATE_NO_WINDOW: the daemon is a GUI-subsystem binary, so spawning the
+/// console-attached powershell.exe would otherwise pop up a console window.
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn powershell_command(script: &Path, args: &[&str]) -> Command {
+    use std::os::windows::process::CommandExt;
+
+    let mut command = Command::new("powershell.exe");
+    command
         .args([
             "-NoProfile",
             "-ExecutionPolicy",
@@ -118,7 +133,13 @@ fn run_powershell_script(script: &Path, args: &[&str]) -> Result<Output, AppErro
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
+
+fn run_powershell_script(script: &Path, args: &[&str]) -> Result<Output, AppError> {
+    powershell_command(script, args)
         .output()
         .map_err(|error| AppError::io("failed to run local updater", error))
 }
@@ -156,37 +177,93 @@ fn parse_updater_result(stdout: &str) -> Option<UpdaterResult> {
     })
 }
 
-fn command_failed_message(output: &Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-
+fn command_failed_message(status: &ExitStatus, stderr: &str, stdout: &str) -> String {
+    let stderr = stderr.trim();
     if !stderr.is_empty() {
-        return stderr;
+        return stderr.to_owned();
     }
 
+    let stdout = stdout.trim();
     if !stdout.is_empty() {
-        return stdout;
+        return stdout.to_owned();
     }
 
-    format!("updater exited with status {}", output.status)
+    format!("updater exited with status {status}")
+}
+
+/// Runs the updater script, streaming `GLOSSA_UPDATE_PROGRESS=<n>` lines to
+/// `progress` as the scripts report stage completion.
+fn run_updater_command_with_progress(
+    args: &[&str],
+    progress: &mut dyn FnMut(u8),
+) -> Result<UpdaterResult, AppError> {
+    let updater_path = find_local_updater_script()?;
+    let mut child = powershell_command(&updater_path, args)
+        .spawn()
+        .map_err(|error| AppError::io("failed to run local updater", error))?;
+
+    let stderr_reader = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppError::message("updater stderr is not captured"))?;
+    let stderr_thread = thread::spawn(move || {
+        let mut stderr = String::new();
+        let _ = BufReader::new(stderr_reader).read_to_string(&mut stderr);
+        stderr
+    });
+
+    let mut stdout_reader = BufReader::new(
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| AppError::message("updater stdout is not captured"))?,
+    );
+    let mut stdout = String::new();
+    let mut buffer = Vec::new();
+    loop {
+        buffer.clear();
+        if stdout_reader.read_until(b'\n', &mut buffer).unwrap_or(0) == 0 {
+            break;
+        }
+        let line = String::from_utf8_lossy(&buffer);
+        if let Some(raw_percent) = line.strip_prefix(PROGRESS_PREFIX) {
+            if let Ok(percent) = raw_percent.trim().parse::<u8>() {
+                progress(percent.min(100));
+            }
+        }
+        stdout.push_str(&line);
+    }
+
+    let status = child
+        .wait()
+        .map_err(|error| AppError::io("failed to run local updater", error))?;
+    let stderr = stderr_thread
+        .join()
+        .unwrap_or_else(|_| "updater stderr lost".to_owned());
+
+    if !status.success() {
+        return Err(AppError::message(command_failed_message(
+            &status, &stderr, &stdout,
+        )));
+    }
+
+    parse_updater_result(&stdout)
+        .ok_or_else(|| AppError::message("updater output did not contain a valid result"))
 }
 
 fn run_updater_command(args: &[&str]) -> Result<UpdaterResult, AppError> {
-    let updater_path = find_local_updater_script()?;
-    let output = run_powershell_script(&updater_path, args)?;
-
-    if !output.status.success() {
-        return Err(AppError::message(command_failed_message(&output)));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_updater_result(&stdout)
-        .ok_or_else(|| AppError::message("updater output did not contain a valid result"))
+    run_updater_command_with_progress(args, &mut |_| {})
 }
 
 /// Checks GitHub releases (via the installed bootstrapper) for a newer version.
 pub fn check_for_update() -> Result<UpdaterResult, AppError> {
     run_updater_command(&["check"])
+}
+
+/// Downloads and installs the latest GitHub release via the local updater
+/// scripts, reporting stage progress (0-100) through `progress`.
+pub fn install_update_with_progress(progress: &mut dyn FnMut(u8)) -> Result<UpdaterResult, AppError> {
+    run_updater_command_with_progress(&["install"], progress)
 }
 
 /// Downloads and installs the latest GitHub release via the local updater scripts.

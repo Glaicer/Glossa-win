@@ -4,6 +4,10 @@
 #
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1 [check|install]
+#
+# Machine-readable lines (parsed by the daemon tray/CLI):
+#   GLOSSA_UPDATE_PROGRESS=<0-100>  (stage completion)
+#   GLOSSA_UPDATE_STATUS=...        (forwarded from the versioned updater)
 
 $ErrorActionPreference = "Stop"
 
@@ -12,6 +16,11 @@ $GLOSSA_VERSION = if ($env:GLOSSA_VERSION) { $env:GLOSSA_VERSION } else { "lates
 $UPDATER_ASSET_NAME = if ($env:UPDATER_ASSET_NAME) { $env:UPDATER_ASSET_NAME } else { "glossa-update.ps1" }
 $CHECKSUMS_ASSET_NAME = if ($env:CHECKSUMS_ASSET_NAME) { $env:CHECKSUMS_ASSET_NAME } else { "sha256sums.txt" }
 $GLOSSA_RELEASE_BASE_URL = if ($env:GLOSSA_RELEASE_BASE_URL) { $env:GLOSSA_RELEASE_BASE_URL } else { "" }
+
+function Write-Progress-Line {
+    param([int]$Percent)
+    Write-Host "GLOSSA_UPDATE_PROGRESS=$Percent"
+}
 
 function Write-Log {
     param([string]$Message)
@@ -95,14 +104,18 @@ try {
     $tmpdir = Join-Path ([System.IO.Path]::GetTempPath()) ("glossa-update-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $tmpdir | Out-Null
 
+    Write-Progress-Line 2
     $updaterPath = Join-Path $tmpdir $UPDATER_ASSET_NAME
     $checksumsPath = Join-Path $tmpdir $CHECKSUMS_ASSET_NAME
 
     Download-Asset -AssetName $UPDATER_ASSET_NAME -Destination $updaterPath
+    Write-Progress-Line 8
     Download-Asset -AssetName $CHECKSUMS_ASSET_NAME -Destination $checksumsPath
     Test-UpdaterChecksum -ChecksumsPath $checksumsPath -UpdaterPath $updaterPath -AssetName $UPDATER_ASSET_NAME
+    Write-Progress-Line 12
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updaterPath @forwardArgs
+    Write-Progress-Line 95
     exit $LASTEXITCODE
 } finally {
     if ($tmpdir -and (Test-Path $tmpdir)) {

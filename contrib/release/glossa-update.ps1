@@ -7,8 +7,14 @@
 # Machine-readable result lines (parsed by the daemon tray/CLI):
 #   GLOSSA_UPDATE_STATUS=up-to-date|available|updated
 #   GLOSSA_UPDATE_VERSION=<version>
+#   GLOSSA_UPDATE_PROGRESS=<0-100>  (stage completion)
 
 $ErrorActionPreference = "Stop"
+
+function Write-Progress-Line {
+    param([int]$Percent)
+    Write-Host "GLOSSA_UPDATE_PROGRESS=$Percent"
+}
 
 function Write-Log {
     param([string]$Message)
@@ -275,20 +281,27 @@ try {
     }
 
     Write-Log "Updating Glossa from $currentVersion to $RELEASE_VERSION"
+    Write-Progress-Line 18
     $script:tmpdir = Join-Path ([System.IO.Path]::GetTempPath()) ("glossa-install-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $script:tmpdir | Out-Null
 
     $zipPath = Join-Path $script:tmpdir $GLOSSA_ASSET_NAME
     $checksumsPath = Join-Path $script:tmpdir $CHECKSUMS_ASSET_NAME
     Download-Asset -AssetName $GLOSSA_ASSET_NAME -Destination $zipPath
+    Write-Progress-Line 55
     Download-Asset -AssetName $CHECKSUMS_ASSET_NAME -Destination $checksumsPath
     Test-DownloadedAssets -ChecksumsPath $checksumsPath -AssetNames @($GLOSSA_ASSET_NAME)
+    Write-Progress-Line 60
 
     $bundleDir = Expand-GlossaBundle -ZipPath $zipPath
+    Write-Progress-Line 68
     Install-GlossaBundle -BundleDir $bundleDir
+    Write-Progress-Line 80
     Schedule-Restart
+    Write-Progress-Line 90
 
     Write-Log "Update complete."
+    Write-Progress-Line 95
     Emit-Result -Status "updated" -Version $RELEASE_VERSION
     exit 0
 } finally {
