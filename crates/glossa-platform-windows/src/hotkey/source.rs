@@ -162,7 +162,7 @@ mod tests {
 
         use crate::hotkey::shortcut_parser::parse_shortcut;
 
-        let hotkey = parse_shortcut(TEST_SHORTCUT).expect("test shortcut should parse");
+        let hotkey = parse_shortcut("Ctrl+Shift+F10").expect("test shortcut should parse");
         let first = GlobalHotKeyManager::new().expect("first manager");
         first
             .register(hotkey)
