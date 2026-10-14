@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-14
+
+### Changed
+
+- Microphone configuration errors now show a clearer message asking users to check the microphone connection and Windows microphone settings; technical details are preserved in the log.
+
 ## [1.2.0] - 2026-10-13
 
 ### Added
@@ -64,6 +70,7 @@ First release of Glossa for Windows — a headless speech-to-text daemon for Win
 - GitHub-release self-updater (`glossa update` and tray **Update…**).
 - Shared core: CPAL capture, silence trim, WAV pipeline, pure state machine (`AppActor`).
 
+[1.2.1]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.2.1
 [1.2.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.0.0

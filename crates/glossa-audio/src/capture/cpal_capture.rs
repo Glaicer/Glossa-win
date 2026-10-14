@@ -58,7 +58,12 @@ impl AudioCapture for CpalAudioCapture {
             .ok_or_else(|| AppError::message("no default input device is available"))?;
         let default_config = device
             .default_input_config()
-            .map_err(|error| AppError::message(format!("failed to read input config: {error}")))?;
+            .map_err(|error| {
+                tracing::error!(error = %error, "failed to read input config");
+                AppError::message(
+                    "Couldn't access your microphone. Please check its connection and your Windows microphone settings.",
+                )
+            })?;
         let fallback_config = default_config.config();
         let requested_config = StreamConfig {
             channels: spec.channels,
