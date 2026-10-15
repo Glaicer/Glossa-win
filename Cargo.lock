@@ -1001,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "glossa-app"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "camino",
@@ -1013,7 +1013,7 @@ dependencies = [
 
 [[package]]
 name = "glossa-audio"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "camino",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "glossa-bin"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "camino",
@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "glossa-core"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "camino",
  "serde",
@@ -1057,7 +1057,7 @@ dependencies = [
 
 [[package]]
 name = "glossa-platform-windows"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "arboard",
  "async-trait",
@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "glossa-stt"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "glossa-app",
