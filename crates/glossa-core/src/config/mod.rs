@@ -400,7 +400,7 @@ api_key = "env:GROQ_API_KEY"
 [audio]
 enabled = true
 work_dir = "auto"
-format = "flac"
+format = "wma"
 sample_rate_hz = 16000
 channels = 1
 trim_silence = true
@@ -423,9 +423,9 @@ level = "warn"
 console = true
 "#,
         )
-        .expect_err("flac format should fail to deserialize");
+        .expect_err("wma format should fail to deserialize");
 
-        assert!(error.to_string().to_lowercase().contains("flac") || error.to_string().contains("unknown"));
+        assert!(error.to_string().to_lowercase().contains("wma") || error.to_string().contains("unknown"));
     }
 
     #[test]
