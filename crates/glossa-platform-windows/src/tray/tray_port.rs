@@ -31,6 +31,7 @@ use crate::service::restart_glossa_service;
 use crate::updater::{check_for_update, install_update_with_progress, UpdaterStatus};
 use crate::winmsg::pump_thread_messages;
 
+use super::file_transcription_dialog::FileTranscriptionUi;
 use super::settings::{write_settings_to_config, SettingsValues};
 use super::settings_dialog::show_settings_dialog;
 
@@ -44,6 +45,7 @@ pub struct BestEffortTrayPort {
     shortcut: String,
     input_mode: InputMode,
     settings: SettingsValues,
+    file_transcription: FileTranscriptionUi,
     config_path: PathBuf,
     app_command_tx: std::sync::Arc<Mutex<Option<UnboundedSender<AppCommand>>>>,
     command_tx: Mutex<Option<mpsc::Sender<TrayCommand>>>,
@@ -53,13 +55,18 @@ pub struct BestEffortTrayPort {
 
 impl BestEffortTrayPort {
     #[must_use]
-    pub fn new(config_path: PathBuf, config: &AppConfig) -> Self {
+    pub fn new(
+        config_path: PathBuf,
+        config: &AppConfig,
+        file_transcription: FileTranscriptionUi,
+    ) -> Self {
         Self {
             enabled: config.ui.tray,
             ui: config.ui.clone(),
             shortcut: config.input.shortcut.clone(),
             input_mode: config.input.mode,
             settings: SettingsValues::from_config(config),
+            file_transcription,
             config_path,
             app_command_tx: std::sync::Arc::new(Mutex::new(None)),
             command_tx: Mutex::new(None),
@@ -104,6 +111,7 @@ impl BestEffortTrayPort {
         let shortcut = self.shortcut.clone();
         let input_mode = self.input_mode;
         let settings = self.settings.clone();
+        let file_transcription = self.file_transcription.clone();
         let config_path = self.config_path.clone();
         let app_command_tx = self.app_command_tx.clone();
         let handle = match thread::Builder::new()
@@ -114,6 +122,7 @@ impl BestEffortTrayPort {
                     shortcut,
                     input_mode,
                     settings,
+                    file_transcription,
                     config_path,
                     app_command_tx,
                     command_rx,
@@ -198,6 +207,7 @@ struct TrayRuntime {
     processing_icon: Icon,
     /// Context menu shown on left/right click (kept alive for popup).
     context_menu: Menu,
+    transcribe_file_item: MenuItem,
     change_shortcut_item: MenuItem,
     settings_item: MenuItem,
     update_item: MenuItem,
@@ -205,6 +215,7 @@ struct TrayRuntime {
     version_item: MenuItem,
     exit_item: MenuItem,
     settings: SettingsValues,
+    file_transcription: FileTranscriptionUi,
     config_path: PathBuf,
     app_command_tx: std::sync::Arc<Mutex<Option<UnboundedSender<AppCommand>>>>,
     popup_hwnd: isize,
@@ -215,6 +226,7 @@ fn run_tray_thread(
     shortcut: String,
     _input_mode: InputMode,
     settings: SettingsValues,
+    file_transcription: FileTranscriptionUi,
     config_path: PathBuf,
     app_command_tx: std::sync::Arc<Mutex<Option<UnboundedSender<AppCommand>>>>,
     command_rx: mpsc::Receiver<TrayCommand>,
@@ -236,6 +248,7 @@ fn run_tray_thread(
     };
 
     // --- Right-click context menu ---
+    let transcribe_file_item = MenuItem::new("Transcribe File", true, None);
     let change_shortcut_item = MenuItem::new("Change shortcut…", true, None);
     let settings_item = MenuItem::new("Settings", true, None);
     let update_item = MenuItem::new("Update…", true, None);
@@ -245,6 +258,8 @@ fn run_tray_thread(
 
     let context_menu = Menu::new();
     if let Err(error) = context_menu.append_items(&[
+        &transcribe_file_item,
+        &PredefinedMenuItem::separator(),
         &change_shortcut_item,
         &settings_item,
         &update_item,
@@ -283,6 +298,7 @@ fn run_tray_thread(
         recording_icon,
         processing_icon,
         context_menu,
+        transcribe_file_item,
         change_shortcut_item,
         settings_item,
         update_item,
@@ -290,6 +306,7 @@ fn run_tray_thread(
         version_item,
         exit_item,
         settings,
+        file_transcription,
         config_path,
         app_command_tx,
         popup_hwnd,
@@ -374,6 +391,7 @@ impl TrayRuntime {
     fn apply_ui(&mut self, ui: UiConfig) {
         self.settings.ui_theme = ui.theme;
         self.ui = ui;
+        self.file_transcription.set_theme(self.ui.theme);
         self.reload_theme_icons();
     }
 
@@ -394,6 +412,10 @@ impl TrayRuntime {
     }
 
     fn handle_menu_event(&mut self, id: &tray_icon::menu::MenuId) -> bool {
+        if id == self.transcribe_file_item.id() {
+            self.file_transcription.show();
+            return false;
+        }
         if id == self.change_shortcut_item.id() {
             self.handle_change_shortcut();
             return false;

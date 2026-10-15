@@ -5,7 +5,11 @@ use anyhow::{anyhow, Context};
 use tokio::fs;
 use tracing_subscriber::EnvFilter;
 
-use glossa_app::{ports::OverlayPort, ports::TrayPort, AppActor, AppDependencies};
+use glossa_app::{
+    ports::{OverlayPort, TrayPort},
+    services::file_transcription::FileTranscriptionService,
+    AppActor, AppDependencies,
+};
 use glossa_audio::{CpalAudioCapture, CuePlayerBackend, WavSilenceTrimmer};
 use glossa_core::{AppConfig, LogLevel};
 use glossa_platform_windows::{
@@ -14,7 +18,7 @@ use glossa_platform_windows::{
     overlay::BestEffortOverlayPort,
     paste::NativePasteBackend,
     temp::WindowsTempStore,
-    tray::BestEffortTrayPort,
+    tray::{BestEffortTrayPort, FileTranscriptionUi},
 };
 use glossa_stt::{build_client, build_text_enhancer};
 
@@ -73,9 +77,25 @@ pub fn init_tracing(config: &AppConfig) -> anyhow::Result<()> {
         .map_err(|error| anyhow!("failed to initialize tracing: {error}"))
 }
 
-/// Builds the best-effort tray port from config.
-pub fn build_tray(config_path: &PathBuf, config: &AppConfig) -> Arc<BestEffortTrayPort> {
-    Arc::new(BestEffortTrayPort::new(config_path.clone(), config))
+/// Builds the best-effort tray port from config, including the Transcribe File
+/// window's service. Must run inside the tokio runtime.
+pub fn build_tray(config_path: &PathBuf, config: &AppConfig) -> anyhow::Result<Arc<BestEffortTrayPort>> {
+    let service = Arc::new(FileTranscriptionService::new(
+        build_client(config)?,
+        build_text_enhancer(config)?,
+        config.llm.enabled,
+    ));
+    let file_transcription = FileTranscriptionUi::new(
+        service,
+        Arc::new(NativeClipboard::new()),
+        tokio::runtime::Handle::current(),
+        config.ui.theme,
+    );
+    Ok(Arc::new(BestEffortTrayPort::new(
+        config_path.clone(),
+        config,
+        file_transcription,
+    )))
 }
 
 /// Builds the recording overlay shown while dictation is active.

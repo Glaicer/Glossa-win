@@ -71,7 +71,7 @@ async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> 
     init_tracing(&config)?;
     config = prepare_runtime_config(config);
     info!(path = %config_path.display(), "starting glossa daemon");
-    let tray = build_tray(&config_path, &config);
+    let tray = build_tray(&config_path, &config)?;
     let overlay = build_overlay(&config);
 
     loop {

@@ -28,6 +28,7 @@ windows-sys = { version = "0.59.0", features = [
     "Win32_Graphics_GdiPlus",
     "Win32_Security_Credentials",
     "Win32_UI_Controls",
+    "Win32_UI_Controls_Dialogs",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_ApplicationInstallationAndServicing",

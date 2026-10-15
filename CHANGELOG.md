@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Transcribe File` tray menu item opens a window with a file picker and a scrollable transcription field. The selected filename appears after `Choose file` and is shortened to fit, with the full path available on hover.
+- `Transcribe` sends the selected file for processing without blocking the window or the tray. After a successful transcription, `Retry` processes the same file again. `Clear` empties the result while keeping the file selected, and `Copy` puts the result on the clipboard without pasting it into another app.
+- `Close` and Esc close the window and cancel any request still in progress.
+- File validation rejects empty files, unsupported extensions, and files larger than 20 MB. The size is checked when choosing a file and again before transcription. Processing errors appear in the window.
 - On-screen recording/processing indicator (`ui.overlay`, on by default): a dark, click-through pill at the bottom-center of the primary display showing a microphone and a live waveform driven by the input level while recording, and a server icon with pulsing dots while processing. Failures are best-effort and never block dictation.
 - On-screen update progress indicator when installing an update from the tray.
 
@@ -30,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Hide console windows when invoking Task Scheduler and creating or launching Startup shortcuts.
 - Refresh an outdated installed `update.ps1` from the embedded copy.
+
+### Fixed
+
+- Audio uploads now use the correct MIME type for uppercase extensions such as `.MP3`.
+
+### Notes
+
+- File transcription accepts WAV, MP3, M4A, FLAC, OGG, and AAC files up to 20,000,000 bytes. Files are uploaded as they are, without trimming or re-encoding; the provider must support the selected format. Glossa does not modify or delete the source file.
 
 ## [1.1.0] - 2026-07-21
 
