@@ -7,7 +7,7 @@ use tokio::fs;
 use tracing::debug;
 
 use glossa_app::{ports::SttClient, AppError};
-use glossa_core::{CapturedAudio, ProviderConfig, ProviderKind};
+use glossa_core::{AudioFormat, CapturedAudio, ProviderConfig, ProviderKind};
 
 use crate::dto::TranscriptionResponse;
 
@@ -56,10 +56,11 @@ impl SttClient for HttpSttClient {
             .await
             .map_err(|error| AppError::io("failed to read captured audio", error))?;
         let filename = audio.path.file_name().unwrap_or("capture.wav").to_string();
-        let mime = match audio.path.extension() {
-            Some("wav") => "audio/wav",
-            _ => "application/octet-stream",
-        };
+        let mime = audio
+            .path
+            .extension()
+            .and_then(|extension| AudioFormat::from_extension(&extension.to_ascii_lowercase()))
+            .map_or("application/octet-stream", AudioFormat::mime_type);
         let file_part = Part::bytes(bytes)
             .file_name(filename)
             .mime_str(mime)
@@ -195,6 +196,12 @@ pub fn build_http_client(
 
 #[cfg(test)]
 mod tests {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use glossa_core::{
+        AudioFormat, CapturedAudio, ProviderConfig, ProviderKind, SecretSource, SessionId,
+    };
+
     use reqwest::StatusCode;
 
     use super::http_status_error_message;
@@ -293,5 +300,111 @@ mod tests {
             http_status_error_message(StatusCode::IM_A_TEAPOT),
             "transcription request failed with status 418 I'm a teapot"
         );
+    }
+
+    #[tokio::test]
+    async fn wav_should_upload_with_wav_mime() {
+        check_upload(AudioFormat::Wav, "audio/wav").await;
+    }
+
+    #[tokio::test]
+    async fn compressed_formats_should_upload_with_correct_filename_and_mime() {
+        for (format, mime) in [
+            (AudioFormat::Mp3, "audio/mpeg"),
+            (AudioFormat::M4a, "audio/mp4"),
+            (AudioFormat::Flac, "audio/flac"),
+            (AudioFormat::Ogg, "audio/ogg"),
+            (AudioFormat::Aac, "audio/aac"),
+        ] {
+            check_upload(format, mime).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn uppercase_file_extension_should_keep_audio_mime() {
+        check_upload_with_extension("MP3", "audio/mpeg").await;
+    }
+
+    async fn check_upload(format: AudioFormat, mime: &str) {
+        check_upload_with_extension(format.extension(), mime).await;
+    }
+
+    async fn check_upload_with_extension(extension: &str, mime: &str) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let address = listener.local_addr().expect("local address");
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept");
+            let mut request = Vec::new();
+            loop {
+                let mut buffer = [0; 4096];
+                let count = socket.read(&mut buffer).await.expect("read request");
+                assert!(count > 0, "request ended before its body arrived");
+                request.extend_from_slice(&buffer[..count]);
+                let text = String::from_utf8_lossy(&request);
+                if let Some(header_end) = text.find("\r\n\r\n") {
+                    let length = text[..header_end]
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().expect("content length"))
+                        })
+                        .expect("content-length header");
+                    if request.len() >= header_end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let body = r#"{"text":"hello"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("respond");
+            String::from_utf8(request).expect("request is utf8")
+        });
+
+        let session_id = SessionId::new();
+        let path = std::env::temp_dir().join(format!("glossa-stt-{session_id}.{extension}"));
+        tokio::fs::write(&path, b"RIFF-test-audio")
+            .await
+            .expect("write audio");
+        let audio = CapturedAudio {
+            session_id,
+            path: path.to_str().expect("utf8 path").into(),
+            duration_ms: 1000,
+            sample_rate_hz: 16000,
+            channels: 1,
+        };
+        let config = ProviderConfig {
+            kind: ProviderKind::Groq,
+            base_url: Some(format!("http://{address}/api/v1/")),
+            model: "whisper-large-v3".into(),
+            api_key: SecretSource::Empty,
+        };
+        let client = super::build_http_client(&config, "test-key".into(), "groq");
+        assert_eq!(client.provider_name(), "groq");
+        let result = client.transcribe(&audio).await;
+        tokio::fs::remove_file(path).await.expect("remove audio");
+        assert_eq!(result.expect("transcribe"), "hello");
+
+        let request = server.await.expect("server task");
+        assert!(request.starts_with("POST /api/v1/audio/transcriptions HTTP/1.1\r\n"));
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer test-key\r\n"));
+        assert!(request.contains("multipart/form-data; boundary="));
+        assert!(request.contains("name=\"model\"\r\n\r\nwhisper-large-v3"));
+        assert!(request.contains("name=\"file\"; filename=\"glossa-stt-"));
+        assert!(request.contains(&format!(
+            "filename=\"glossa-stt-{session_id}.{extension}\""
+        )));
+        assert!(request.contains(&format!("Content-Type: {mime}")));
+        assert!(request.contains("RIFF-test-audio"));
     }
 }
