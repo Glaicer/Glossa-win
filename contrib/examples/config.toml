@@ -66,7 +66,7 @@ tray = true
 # Enables the on-screen recording/processing indicator; options: true, false.
 overlay = true
 # Selects which tray icon set to use; options: "light", "dark".
-theme = "dark"
+icon = "dark"
 # Sets the tray icon shown while idle; options: absolute path to an icon file.
 idle_icon = "C:\\Users\\<user>\\AppData\\Local\\glossa\\assets\\tray\\idle.png"
 # Sets the tray icon shown while recording; options: absolute path to an icon file.

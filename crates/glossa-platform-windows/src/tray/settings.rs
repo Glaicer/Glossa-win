@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, fs, path::Path};
 
 use glossa_app::AppError;
-use glossa_core::{AppConfig, InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
+use glossa_core::{AppConfig, IconStyle, InputBackend, InputMode, PasteMode, ProviderKind};
 
 use crate::credentials::{delete_user_environment_variable, install_default_store, store_secret};
 use crate::setup::api_key_env_name;
@@ -26,7 +26,7 @@ pub(super) struct SettingsValues {
     pub(super) llm_api_key: String,
     pub(super) paste_mode: PasteMode,
     pub(super) append_space: bool,
-    pub(super) ui_theme: UiTheme,
+    pub(super) icon: IconStyle,
 }
 
 impl SettingsValues {
@@ -46,7 +46,7 @@ impl SettingsValues {
             llm_api_key: String::from(config.llm.api_key.clone()),
             paste_mode: config.paste.mode,
             append_space: config.paste.append_space,
-            ui_theme: config.ui.theme,
+            icon: config.ui.icon,
         }
     }
 }
@@ -72,12 +72,21 @@ pub(super) fn apply_settings_to_config(
         }
 
         let replacement = current_section.and_then(|section| {
-            updates
-                .iter()
-                .find(|update| update.section == section && line_matches_key(line, update.key))
+            updates.iter().find(|update| {
+                update.section == section
+                    && (line_matches_key(line, update.key)
+                        || update
+                            .legacy_key
+                            .is_some_and(|key| line_matches_key(line, key)))
+            })
         });
 
         if let Some(update) = replacement {
+            let line = if line_matches_key(line, update.key) {
+                line
+            } else {
+                &rename_line_key(line, update.key)
+            };
             updated.push_str(&replace_line_value(line, &update.value));
             updated.push_str(newline);
             seen.insert((update.section, update.key));
@@ -374,10 +383,10 @@ pub(super) fn paste_mode_id(value: PasteMode) -> &'static str {
     }
 }
 
-pub(super) fn ui_theme_id(value: UiTheme) -> &'static str {
+pub(super) fn icon_style_id(value: IconStyle) -> &'static str {
     match value {
-        UiTheme::Dark => "dark",
-        UiTheme::Light => "light",
+        IconStyle::Dark => "dark",
+        IconStyle::Light => "light",
     }
 }
 
@@ -405,7 +414,12 @@ fn build_updates(settings: &SettingsValues) -> Vec<SettingUpdate> {
         SettingUpdate::new("LLM", "api_key", quoted(&settings.llm_api_key)),
         SettingUpdate::new("paste", "mode", quoted(paste_mode_id(settings.paste_mode))),
         SettingUpdate::new("paste", "append_space", settings.append_space.to_string()),
-        SettingUpdate::new("ui", "theme", quoted(ui_theme_id(settings.ui_theme))),
+        SettingUpdate::with_legacy_key(
+            "ui",
+            "icon",
+            "theme",
+            quoted(icon_style_id(settings.icon)),
+        ),
     ]
 }
 
@@ -513,6 +527,8 @@ fn find_comment_start(value: &str) -> Option<usize> {
 struct SettingUpdate {
     section: &'static str,
     key: &'static str,
+    /// Previous key name still found in older config files; rewritten to `key` on save.
+    legacy_key: Option<&'static str>,
     value: String,
 }
 
@@ -521,14 +537,43 @@ impl SettingUpdate {
         Self {
             section,
             key,
+            legacy_key: None,
+            value,
+        }
+    }
+
+    fn with_legacy_key(
+        section: &'static str,
+        key: &'static str,
+        legacy_key: &'static str,
+        value: String,
+    ) -> Self {
+        Self {
+            section,
+            key,
+            legacy_key: Some(legacy_key),
             value,
         }
     }
 }
 
+/// Rewrites a legacy key line (e.g. `theme = ...`) to the current key name,
+/// preserving leading whitespace, the spacing before `=`, and everything from `=` on.
+fn rename_line_key(line: &str, key: &str) -> String {
+    let trimmed = line.trim_start();
+    let eq_index = trimmed.find('=').expect("matched key lines must contain '='");
+    let key_end = trimmed[..eq_index].trim_end().len();
+    let mut renamed = String::with_capacity(line.len() + key.len());
+    renamed.push_str(&line[..line.len() - trimmed.len()]);
+    renamed.push_str(key);
+    renamed.push_str(&trimmed[key_end..eq_index]);
+    renamed.push_str(&trimmed[eq_index..]);
+    renamed
+}
+
 #[cfg(test)]
 mod tests {
-    use glossa_core::{InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
+    use glossa_core::{IconStyle, InputBackend, InputMode, PasteMode, ProviderKind};
 
     use glossa_app::AppError;
 
@@ -575,7 +620,7 @@ mode = "ctrl-v"
 append_space = false # keep this comment
 
 [ui]
-theme = "dark"
+icon = "dark"
 tray = true
 idle_icon = "C:/glossa/idle.png"
 recording_icon = "C:/glossa/recording.png"
@@ -615,7 +660,7 @@ api_key = ""
             llm_api_key: "env:LLM_KEY".into(),
             paste_mode: PasteMode::ShiftInsert,
             append_space: true,
-            ui_theme: UiTheme::Light,
+            icon: IconStyle::Light,
         }
     }
 
@@ -657,7 +702,7 @@ mode = "shift-insert"
 append_space = true # keep this comment
 
 [ui]
-theme = "light"
+icon = "light"
 tray = true
 idle_icon = "C:/glossa/idle.png"
 recording_icon = "C:/glossa/recording.png"
@@ -680,6 +725,17 @@ api_key = "env:LLM_KEY"
 "#;
 
         assert_eq!(updated, expected);
+    }
+
+    #[test]
+    fn apply_settings_to_config_should_migrate_legacy_theme_key_to_icon() {
+        let source = valid_config_source().replace("icon = \"dark\"\n", "theme = \"dark\"\n");
+
+        let updated = apply_settings_to_config(&source, &updated_settings())
+            .expect("legacy theme line should be migrated");
+
+        assert!(updated.contains("icon = \"light\""));
+        assert!(!updated.contains("theme ="));
     }
 
     #[test]
@@ -733,7 +789,7 @@ mode = "shift-insert"
 append_space = true
 
 [ui]
-theme = "light"
+icon = "light"
 tray = true
 idle_icon = "C:/glossa/idle.png"
 recording_icon = "C:/glossa/recording.png"

@@ -35,7 +35,7 @@ mod ui {
     };
 
     use glossa_app::AppError;
-    use glossa_core::{InputBackend, InputMode, PasteMode, ProviderKind, UiTheme};
+    use glossa_core::{IconStyle, InputBackend, InputMode, PasteMode, ProviderKind};
     use windows_sys::Win32::{
         Foundation::{
             COLORREF, HANDLE, HWND, LPARAM, LRESULT, RECT, WPARAM, INVALID_HANDLE_VALUE,
@@ -102,7 +102,7 @@ mod ui {
     const ID_API_KEY: i32 = 1007;
     const ID_PASTE_MODE: i32 = 1008;
     const ID_APPEND_SPACE: i32 = 1009;
-    const ID_THEME: i32 = 1010;
+    const ID_ICON: i32 = 1010;
     const ID_LLM: i32 = 1011;
     const ID_CANCEL: i32 = 1012;
     const ID_SAVE: i32 = 1013;
@@ -149,7 +149,7 @@ mod ui {
         api_key: HWND,
         paste_mode: HWND,
         append_space: HWND,
-        theme: HWND,
+        icon: HWND,
         /// LLM fields edited via the LLM enhancer sub-dialog.
         llm_enabled: bool,
         llm_base_url: String,
@@ -205,7 +205,8 @@ mod ui {
         let class_name = format!("{CLASS_NAME}{unique}");
         let class_wide = to_wide(&class_name);
         let hinstance = GetModuleHandleW(ptr::null());
-        let dark = matches!(initial.ui_theme, UiTheme::Dark);
+        // Dialogs are always light themed; the icon setting only selects tray icons.
+        let dark = false;
 
         let wc = WNDCLASSEXW {
             cbSize: size_of::<WNDCLASSEXW>() as u32,
@@ -245,7 +246,7 @@ mod ui {
                 api_key: ptr::null_mut(),
                 paste_mode: ptr::null_mut(),
                 append_space: ptr::null_mut(),
-                theme: ptr::null_mut(),
+                icon: ptr::null_mut(),
                 llm_enabled: initial.llm_enabled,
                 llm_base_url: initial.llm_base_url.clone(),
                 llm_model: initial.llm_model.clone(),
@@ -377,7 +378,7 @@ mod ui {
     }
 
     unsafe fn on_create(hwnd: HWND, initial: &SettingsValues) -> Result<(), AppError> {
-        let dark = matches!(initial.ui_theme, UiTheme::Dark);
+        let dark = false;
         let font = create_ui_font(FW_NORMAL as i32, -15);
         let header_font = create_ui_font(FW_SEMIBOLD as i32, -15);
         let bg_brush = CreateSolidBrush(if dark { DARK_BG } else { LIGHT_BG });
@@ -512,17 +513,17 @@ mod ui {
         // --- UI ---
         create_section_header(hwnd, margin, y, field_w + label_w + 12, "UI", 2011, header_font);
         y += 26;
-        create_label(hwnd, margin, y + 4, label_w, 20, "Theme", 2012, font);
-        let theme = create_combo(hwnd, field_x, y, field_w, 220, ID_THEME, font);
+        create_label(hwnd, margin, y + 4, label_w, 20, "Icon", 2012, font);
+        let icon = create_combo(hwnd, field_x, y, field_w, 220, ID_ICON, font);
         for label in ["dark", "light"] {
-            send_combo_string(theme, label);
+            send_combo_string(icon, label);
         }
         SendMessageW(
-            theme,
+            icon,
             CB_SETCURSEL,
-            match initial.ui_theme {
-                UiTheme::Dark => 0,
-                UiTheme::Light => 1,
+            match initial.icon {
+                IconStyle::Dark => 0,
+                IconStyle::Light => 1,
             },
             0,
         );
@@ -579,7 +580,7 @@ mod ui {
                 state.api_key = api_key;
                 state.paste_mode = paste_mode;
                 state.append_space = append_space;
-                state.theme = theme;
+                state.icon = icon;
             }
         });
 
@@ -686,9 +687,9 @@ mod ui {
                         _ => PasteMode::CtrlV,
                     },
                     append_space: is_checked(state.append_space),
-                    ui_theme: match SendMessageW(state.theme, CB_GETCURSEL, 0, 0) {
-                        1 => UiTheme::Light,
-                        _ => UiTheme::Dark,
+                    icon: match SendMessageW(state.icon, CB_GETCURSEL, 0, 0) {
+                        1 => IconStyle::Light,
+                        _ => IconStyle::Dark,
                     },
                 })
             }

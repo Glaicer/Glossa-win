@@ -6,8 +6,8 @@ use std::{
 
 use glossa_app::AppError;
 use glossa_core::{
-    AppConfig, InputBackend, InputConfig, InputMode, ProviderConfig, ProviderKind, SecretSource,
-    UiConfig, UiTheme,
+    AppConfig, IconStyle, InputBackend, InputConfig, InputMode, ProviderConfig, ProviderKind,
+    SecretSource, UiConfig,
 };
 
 use crate::credentials::{
@@ -26,7 +26,7 @@ pub struct SetupAnswers {
     pub model: String,
     pub shortcut: String,
     pub mode: InputMode,
-    pub theme: UiTheme,
+    pub icon: IconStyle,
     pub autostart: bool,
     pub start_now: bool,
 }
@@ -40,7 +40,7 @@ impl Default for SetupAnswers {
             model: default_model(ProviderKind::Groq).to_owned(),
             shortcut: "Ctrl+Alt+Space".into(),
             mode: InputMode::Toggle,
-            theme: UiTheme::Light,
+            icon: IconStyle::Light,
             autostart: true,
             start_now: true,
         }
@@ -156,7 +156,7 @@ pub fn build_app_config(answers: &SetupAnswers, install_dir: &Path) -> Result<Ap
         ui: UiConfig {
             tray: true,
             overlay: true,
-            theme: answers.theme,
+            icon: answers.icon,
             idle_icon: utf8(tray.join("idle.png"))?,
             recording_icon: utf8(tray.join("recording.png"))?,
             processing_icon: Some(utf8(tray.join("processing.png"))?),
@@ -358,7 +358,7 @@ mod tests {
         let answers = SetupAnswers::default();
         assert_eq!(answers.provider, ProviderKind::Groq);
         assert_eq!(answers.mode, InputMode::Toggle);
-        assert_eq!(answers.theme, UiTheme::Light);
+        assert_eq!(answers.icon, IconStyle::Light);
         assert_eq!(answers.model, "whisper-large-v3-turbo");
         assert!(answers.autostart);
         assert!(answers.start_now);

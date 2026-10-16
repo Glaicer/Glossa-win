@@ -17,7 +17,7 @@ pub use self::logging::{LogLevel, LoggingConfig};
 pub use self::paste::PasteConfig;
 pub use self::provider::ProviderConfig;
 pub use self::secret::{set_credential_store, CredentialStore, SecretSource};
-pub use self::ui::{UiConfig, UiTheme};
+pub use self::ui::{IconStyle, UiConfig};
 use crate::{AppStateKind, CoreError, ProviderKind};
 
 /// Default loopback IPC endpoint used when `control.socket_path = "auto"`.

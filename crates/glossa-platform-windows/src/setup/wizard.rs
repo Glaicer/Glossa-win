@@ -96,7 +96,7 @@ mod ui {
     };
 
     use glossa_app::AppError;
-    use glossa_core::{InputMode, ProviderKind, UiTheme};
+    use glossa_core::{IconStyle, InputMode, ProviderKind};
     use windows_sys::Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{
@@ -141,7 +141,7 @@ mod ui {
     const ID_SHORTCUT: i32 = 1005;
     const ID_MODE_PTT: i32 = 1006;
     const ID_MODE_TOGGLE: i32 = 1007;
-    const ID_THEME_DARK: i32 = 1008;
+    const ID_ICON_DARK: i32 = 1008;
     const ID_THEME_LIGHT: i32 = 1009;
     const ID_AUTOSTART: i32 = 1010;
     const ID_START_NOW: i32 = 1011;
@@ -166,7 +166,7 @@ mod ui {
         model: HWND,
         shortcut: HWND,
         mode_ptt: HWND,
-        theme_dark: HWND,
+        icon_dark: HWND,
         autostart: HWND,
         start_now: HWND,
         result: Option<SetupAnswers>,
@@ -514,14 +514,14 @@ mod ui {
         );
         y += 26;
 
-        create_static(hwnd, margin, y + 4, label_w, 20, "Tray theme", 2010, font);
-        let theme_dark = create_radio(
+        create_static(hwnd, margin, y + 4, label_w, 20, "Tray icon", 2010, font);
+        let icon_dark = create_radio(
             hwnd,
             field_x,
             y + 2,
             100,
             24,
-            ID_THEME_DARK,
+            ID_ICON_DARK,
             "Dark",
             font,
             true,
@@ -621,7 +621,7 @@ mod ui {
             model,
             shortcut,
             mode_ptt,
-            theme_dark,
+            icon_dark,
             autostart,
             start_now,
             result: None,
@@ -692,10 +692,10 @@ mod ui {
                 } else {
                     InputMode::Toggle
                 };
-                let theme = if is_checked(state.theme_dark) {
-                    UiTheme::Dark
+                let icon = if is_checked(state.icon_dark) {
+                    IconStyle::Dark
                 } else {
-                    UiTheme::Light
+                    IconStyle::Light
                 };
                 Ok(SetupAnswers {
                     provider,
@@ -704,7 +704,7 @@ mod ui {
                     model: get_text(state.model),
                     shortcut: hotkey_picker_get(state.shortcut),
                     mode,
-                    theme,
+                    icon,
                     autostart: is_checked(state.autostart),
                     start_now: is_checked(state.start_now),
                 })

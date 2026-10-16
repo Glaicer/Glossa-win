@@ -89,7 +89,6 @@ pub fn build_tray(config_path: &PathBuf, config: &AppConfig) -> anyhow::Result<A
         service,
         Arc::new(NativeClipboard::new()),
         tokio::runtime::Handle::current(),
-        config.ui.theme,
     );
     Ok(Arc::new(BestEffortTrayPort::new(
         config_path.clone(),

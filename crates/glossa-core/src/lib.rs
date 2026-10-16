@@ -15,7 +15,7 @@ pub use command::{AppCommand, CommandOrigin};
 pub use config::{
     set_credential_store, AppConfig, AudioConfig, ControlConfig, CredentialStore, InputBackend,
     InputConfig, InputMode, LlmConfig, LogLevel, LoggingConfig, PasteConfig, SecretSource,
-    UiConfig, UiTheme, WorkDir, DEFAULT_IPC_ENDPOINT,
+    UiConfig, IconStyle, WorkDir, DEFAULT_IPC_ENDPOINT,
 };
 pub use error::CoreError;
 pub use ids::SessionId;

@@ -6,7 +6,6 @@
 use std::sync::Arc;
 
 use glossa_app::{ports::ClipboardWriter, services::file_transcription::FileTranscriptionService};
-use glossa_core::UiTheme;
 use tokio::runtime::Handle;
 
 /// Tray-side handle for the Transcribe File window. `show` is fire-and-forget:
@@ -16,7 +15,6 @@ pub struct FileTranscriptionUi {
     service: Arc<FileTranscriptionService>,
     clipboard: Arc<dyn ClipboardWriter>,
     runtime: Handle,
-    theme: UiTheme,
 }
 
 impl FileTranscriptionUi {
@@ -24,19 +22,12 @@ impl FileTranscriptionUi {
         service: Arc<FileTranscriptionService>,
         clipboard: Arc<dyn ClipboardWriter>,
         runtime: Handle,
-        theme: UiTheme,
     ) -> Self {
         Self {
             service,
             clipboard,
             runtime,
-            theme,
         }
-    }
-
-    /// Theme follows the tray (refreshed after a Settings change).
-    pub(super) fn set_theme(&mut self, theme: UiTheme) {
-        self.theme = theme;
     }
 
     /// Opens the window and returns immediately.
@@ -62,7 +53,6 @@ mod ui {
     };
 
     use glossa_app::{services::file_transcription::validate_transcription_file, AppError};
-    use glossa_core::UiTheme;
     use tokio::task::AbortHandle;
     use tracing::warn;
     use windows_sys::Win32::{
@@ -172,7 +162,8 @@ mod ui {
         );
         let class_wide = to_wide(&class_name);
         let hinstance = GetModuleHandleW(ptr::null());
-        let dark = matches!(window.theme, UiTheme::Dark);
+        // Windows are always light themed; the icon setting only selects tray icons.
+        let dark = false;
 
         let wc = WNDCLASSEXW {
             cbSize: size_of::<WNDCLASSEXW>() as u32,
@@ -392,7 +383,7 @@ mod ui {
     }
 
     unsafe fn on_create(hwnd: HWND, window: &super::FileTranscriptionUi) {
-        let dark = matches!(window.theme, UiTheme::Dark);
+        let dark = false;
         let font = create_body_font();
         let header_font = create_header_font();
         let bg_brush = CreateSolidBrush(if dark { DARK_BG } else { LIGHT_BG });

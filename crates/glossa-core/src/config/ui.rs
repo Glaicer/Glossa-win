@@ -3,18 +3,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
 
-/// Visual theme used to pick tray icons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Color variant of the tray icons.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum UiTheme {
+pub enum IconStyle {
+    #[default]
     Light,
     Dark,
-}
-
-impl Default for UiTheme {
-    fn default() -> Self {
-        Self::Light
-    }
 }
 
 /// Tray icons and cue sounds used by the daemon.
@@ -23,8 +18,9 @@ pub struct UiConfig {
     pub tray: bool,
     #[serde(default = "default_overlay")]
     pub overlay: bool,
-    #[serde(default)]
-    pub theme: UiTheme,
+    // Legacy key `theme` is still accepted; it used to also color the dialogs.
+    #[serde(default, alias = "theme")]
+    pub icon: IconStyle,
     pub idle_icon: Utf8PathBuf,
     pub recording_icon: Utf8PathBuf,
     pub processing_icon: Option<Utf8PathBuf>,
@@ -40,7 +36,7 @@ impl Default for UiConfig {
         Self {
             tray: true,
             overlay: true,
-            theme: UiTheme::Light,
+            icon: IconStyle::Light,
             idle_icon: "/path/to/idle.png".into(),
             recording_icon: "/path/to/recording.png".into(),
             processing_icon: Some("/path/to/processing.png".into()),
@@ -78,17 +74,17 @@ impl UiConfig {
 
     #[must_use]
     pub fn idle_tray_icon(&self) -> &Utf8Path {
-        match self.theme {
-            UiTheme::Light => &self.idle_icon,
-            UiTheme::Dark => self.idle_dark_icon.as_deref().unwrap_or(&self.idle_icon),
+        match self.icon {
+            IconStyle::Light => &self.idle_icon,
+            IconStyle::Dark => self.idle_dark_icon.as_deref().unwrap_or(&self.idle_icon),
         }
     }
 
     #[must_use]
     pub fn recording_tray_icon(&self) -> &Utf8Path {
-        match self.theme {
-            UiTheme::Light => &self.recording_icon,
-            UiTheme::Dark => self
+        match self.icon {
+            IconStyle::Light => &self.recording_icon,
+            IconStyle::Dark => self
                 .recording_dark_icon
                 .as_deref()
                 .unwrap_or(&self.recording_icon),
@@ -97,9 +93,9 @@ impl UiConfig {
 
     #[must_use]
     pub fn processing_tray_icon(&self) -> &Utf8Path {
-        match self.theme {
-            UiTheme::Light => self.processing_icon.as_deref().unwrap_or(&self.idle_icon),
-            UiTheme::Dark => self
+        match self.icon {
+            IconStyle::Light => self.processing_icon.as_deref().unwrap_or(&self.idle_icon),
+            IconStyle::Dark => self
                 .processing_dark_icon
                 .as_deref()
                 .or(self.idle_dark_icon.as_deref())
@@ -121,12 +117,12 @@ fn validate_optional_path(path: &Option<Utf8PathBuf>, label: &str) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::{UiConfig, UiTheme};
+    use super::{IconStyle, UiConfig};
 
     #[test]
-    fn dark_theme_should_prefer_dark_icon_overrides() {
+    fn dark_icon_style_should_prefer_dark_icon_overrides() {
         let ui = UiConfig {
-            theme: UiTheme::Dark,
+            icon: IconStyle::Dark,
             idle_dark_icon: Some(r"C:\glossa\idle_dark.png".into()),
             recording_dark_icon: Some(r"C:\glossa\recording_dark.png".into()),
             processing_dark_icon: Some(r"C:\glossa\processing_dark.png".into()),
@@ -145,9 +141,9 @@ mod tests {
     }
 
     #[test]
-    fn dark_theme_should_fallback_to_light_icons() {
+    fn dark_icon_style_should_fallback_to_light_icons() {
         let ui = UiConfig {
-            theme: UiTheme::Dark,
+            icon: IconStyle::Dark,
             idle_dark_icon: None,
             recording_dark_icon: None,
             processing_dark_icon: None,
@@ -163,11 +159,11 @@ mod tests {
     }
 
     #[test]
-    fn changing_theme_should_switch_selected_tray_icon_paths() {
-        // Regression: settings save only updated config.theme; tray must re-resolve
-        // paths when theme flips (see BestEffortTrayPort reload_theme_icons).
+    fn changing_icon_style_should_switch_selected_tray_icon_paths() {
+        // Regression: settings save only updated config.ui.icon; tray must re-resolve
+        // paths when the icon style flips (see BestEffortTrayPort reload_theme_icons).
         let mut ui = UiConfig {
-            theme: UiTheme::Light,
+            icon: IconStyle::Light,
             idle_icon: r"C:\glossa\idle.png".into(),
             recording_icon: r"C:\glossa\recording.png".into(),
             processing_icon: Some(r"C:\glossa\processing.png".into()),
@@ -179,14 +175,14 @@ mod tests {
 
         assert_eq!(ui.idle_tray_icon().as_str(), r"C:\glossa\idle.png");
 
-        ui.theme = UiTheme::Dark;
+        ui.icon = IconStyle::Dark;
         assert_eq!(ui.idle_tray_icon().as_str(), r"C:\glossa\idle_dark.png");
         assert_eq!(
             ui.recording_tray_icon().as_str(),
             r"C:\glossa\recording_dark.png"
         );
 
-        ui.theme = UiTheme::Light;
+        ui.icon = IconStyle::Light;
         assert_eq!(ui.idle_tray_icon().as_str(), r"C:\glossa\idle.png");
     }
 }

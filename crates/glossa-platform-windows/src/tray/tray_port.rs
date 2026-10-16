@@ -165,7 +165,7 @@ impl BestEffortTrayPort {
         }
     }
 
-    /// Reloads tray icons from the given UI config (e.g. after theme change + restart).
+    /// Reloads tray icons from the given UI config (e.g. after icon change + restart).
     pub fn apply_ui_config(&self, ui: UiConfig) {
         self.send_command(TrayCommand::ReloadUi(ui));
     }
@@ -389,9 +389,8 @@ impl TrayRuntime {
     }
 
     fn apply_ui(&mut self, ui: UiConfig) {
-        self.settings.ui_theme = ui.theme;
+        self.settings.icon = ui.icon;
         self.ui = ui;
-        self.file_transcription.set_theme(self.ui.theme);
         self.reload_theme_icons();
     }
 
@@ -447,14 +446,14 @@ impl TrayRuntime {
     fn handle_settings(&mut self) {
         match show_settings_dialog(&self.settings) {
             Ok(Some(updated)) => {
-                let theme_changed = updated.ui_theme != self.settings.ui_theme;
+                let icon_changed = updated.icon != self.settings.icon;
                 self.settings = updated;
                 self.enhancer_item.set_checked(self.settings.llm_enabled);
-                if theme_changed {
+                if icon_changed {
                     // Icons are loaded once at tray start; refresh immediately so the
                     // notification-area icon matches the new color scheme without waiting
                     // for a process-level restart (in-process restart keeps this thread).
-                    self.ui.theme = self.settings.ui_theme;
+                    self.ui.icon = self.settings.icon;
                     self.reload_theme_icons();
                 }
                 self.persist_settings();

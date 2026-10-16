@@ -128,7 +128,7 @@ async fn run_with_config(config_path: std::path::PathBuf) -> anyhow::Result<()> 
             ActorExit::Restart => {
                 info!(path = %config_path.display(), "restarting glossa daemon");
                 config = prepare_runtime_config(load_config(&config_path).await?);
-                // Tray thread outlives the actor; push reloaded UI (theme/icons) into it.
+                // Tray thread outlives the actor; push reloaded UI (icons) into it.
                 tray.apply_ui_config(config.ui.clone());
             }
         }
