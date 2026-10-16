@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-16
+
+### Changed
+
+- Renamed the `Theme` setting to `Icon`; it now selects only the light or dark tray icon set.
+- Settings, the LLM enhancer dialog, and the Transcribe File window always use a light palette, independent of the icon setting.
+- Configuration uses `ui.icon` instead of `ui.theme`. Existing `ui.theme` configurations remain supported and are migrated to `ui.icon` when saving Settings.
+
 ## [1.3.0] - 2026-10-15
 
 ### Added
@@ -87,6 +95,7 @@ First release of Glossa for Windows — a headless speech-to-text daemon for Win
 - GitHub-release self-updater (`glossa update` and tray **Update…**).
 - Shared core: CPAL capture, silence trim, WAV pipeline, pure state machine (`AppActor`).
 
+[1.3.1]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.3.1
 [1.3.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.3.0
 [1.2.1]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.2.1
 [1.2.0]: https://github.com/Glaicer/Glossa-win/releases/tag/v1.2.0
